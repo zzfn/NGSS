@@ -11,7 +11,7 @@ import type { Node } from '../types'
 
 function barColor(v: number) {
   if (v >= 90) return '#ef4444'
-  if (v >= 70) return '#f97316'
+  if (v >= 50) return '#f97316'
   return 'hsl(var(--foreground) / 0.4)'
 }
 
@@ -85,7 +85,8 @@ function MiniChart({
               }}
               labelStyle={{ color: 'hsl(var(--muted-foreground))', fontSize: '10px' }}
               itemStyle={{ color: 'hsl(var(--card-foreground))', fontSize: '10px' }}
-              wrapperStyle={{ zIndex: 50 }}
+              wrapperStyle={{ zIndex: 9999 }}
+              allowEscapeViewBox={{ x: true, y: true }}
               formatter={formatter}
             />
             {dataKeys.map((key, i) => (
@@ -177,7 +178,7 @@ export const NodeCard = memo(function NodeCard({ node }: { node: Node }) {
   const lastPing = pingData[pingData.length - 1]
 
   return (
-    <a href={`#${encodeURIComponent(node.uuid)}`} className="block group relative border hover:border-border transition-colors cursor-pointer backdrop-blur-lg"
+    <a href={`#${encodeURIComponent(node.uuid)}`} className="block group relative border hover:border-border transition-colors cursor-pointer"
       style={{
         borderColor: 'hsl(var(--border) / 0.5)',
         background: 'hsl(var(--card) / 0.92)',

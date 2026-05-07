@@ -49,8 +49,8 @@ const META_KEYS = [
 const DYN_INTERVAL_MS = 2000
 const HISTORY_LIMIT = 120
 const TCP_PING_INTERVAL_MS = 30_000
-const TCP_PING_WINDOW_MS = 6 * 3600_000  // 每次查最近 6 小时
-const TCP_PING_MAX = 4000                 // 每节点最多保留 4000 条（20s/条 × 3运营商 × 6h ≈ 3240）
+const TCP_PING_WINDOW_MS = 3 * 3600_000  // 每次查最近 3 小时
+const TCP_PING_MAX = 2000                 // 每节点最多保留 2000 条（20s/条 × 3运营商 × 3h ≈ 1620）
 const UPTIME_BUCKETS = 80
 const UPTIME_BUCKET_MS = (24 * 3600_000) / UPTIME_BUCKETS
 

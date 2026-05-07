@@ -185,7 +185,7 @@ export function App() {
       {/* 主体：侧边栏 + 内容区 */}
       <div className="flex flex-1 pt-[60px]">
         {/* 左侧边栏（桌面端） */}
-        <aside className="w-52 shrink-0 sticky top-[60px] h-[calc(100vh-60px)] overflow-y-auto scrollbar-none sidebar-warm hidden lg:block">
+        <aside className="w-52 shrink-0 self-start sticky top-[60px] max-h-[calc(100vh-60px)] overflow-y-auto scrollbar-none sidebar-warm hidden lg:block">
           <SidebarPanel nodes={allNodes} onViewMap={() => setView('map')} />
         </aside>
 
