@@ -1,8 +1,8 @@
 const THEMES = ['starship', 'leading'] as const
+const picked = THEMES[Date.now() % THEMES.length]
 
 export function Background() {
   const base = import.meta.env.BASE_URL
-  const picked = THEMES[Date.now() % THEMES.length]
   return (
     <div className="fixed inset-0 -z-10" aria-hidden>
       <video
