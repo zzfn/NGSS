@@ -156,7 +156,7 @@ export function IndexChart({ nodes }: { nodes: Node[] }) {
   return (
     <div
       style={{
-        background: 'hsl(var(--card) / 0.92)',
+        background: 'hsl(var(--card) / 0.7)',
         borderBottom: '1px solid hsl(var(--border) / 0.6)',
       }}
       className="flex"

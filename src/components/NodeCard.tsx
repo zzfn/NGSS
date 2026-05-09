@@ -181,7 +181,7 @@ export const NodeCard = memo(function NodeCard({ node }: { node: Node }) {
     <a href={`#${encodeURIComponent(node.uuid)}`} className="block group relative border hover:border-border transition-colors cursor-pointer"
       style={{
         borderColor: 'hsl(var(--border) / 0.5)',
-        background: 'hsl(var(--card) / 0.92)',
+        background: 'hsl(var(--card) / 0.7)',
       }}>
 
       {/* 顶部状态线 */}

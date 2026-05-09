@@ -53,7 +53,7 @@ export function Heatmap({ nodes, onSelect }: { nodes: Node[]; onSelect?: (uuid: 
   return (
     <div
       className="flex flex-col overflow-hidden shrink-0"
-      style={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}
+      style={{ background: 'hsl(var(--card) / 0.7)', border: '1px solid hsl(var(--border))' }}
     >
       <div
         className="flex items-center justify-between px-4 py-2 text-[10px] font-bold uppercase tracking-[0.2em] font-mono shrink-0"

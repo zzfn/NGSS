@@ -176,7 +176,7 @@ export const TradingTicker = memo(function TradingTicker({ nodes, embedded = fal
         embedded
           ? { background: 'transparent' }
           : {
-              background: 'linear-gradient(180deg, hsl(var(--card) / 0.95), hsl(var(--card) / 0.85))',
+              background: 'linear-gradient(180deg, hsl(var(--card) / 0.7), hsl(var(--card) / 0.65))',
               borderTop: '1px solid hsl(var(--border) / 0.7)',
               borderBottom: '1px solid hsl(var(--border) / 0.7)',
               boxShadow: 'inset 0 0 12px rgba(0,0,0,0.25)',
@@ -376,14 +376,14 @@ export function WatchList({ nodes, selected, activeTag, activeRegion, onSelect }
     <div
       className="overflow-hidden"
       style={{
-        background: 'hsl(var(--card) / 0.85)',
+        background: 'hsl(var(--card) / 0.65)',
       }}
     >
       {/* Title bar */}
       <div
         className="flex items-center justify-between px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.24em]"
         style={{
-          background: 'hsl(var(--card))',
+          background: 'hsl(var(--card) / 0.7)',
           borderBottom: '1px solid hsl(var(--border) / 0.5)',
           color: 'hsl(var(--nx-text-secondary))',
         }}

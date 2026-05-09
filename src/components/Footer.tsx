@@ -25,7 +25,7 @@ export function Footer({ text, nodes = [] }: { text?: string; nodes?: Node[] }) 
     <footer
       className="sticky bottom-0 z-30"
       style={{
-        background: 'hsl(var(--card) / 0.92)',
+        background: 'hsl(var(--card) / 0.7)',
         borderTop: '1px solid hsl(var(--border) / 0.6)',
         backdropFilter: 'blur(12px)',
       }}

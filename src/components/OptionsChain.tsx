@@ -94,7 +94,7 @@ export function OptionsChain({ nodes, onSelect }: { nodes: Node[]; onSelect?: (u
       <div
         className="flex items-center justify-between px-4 py-2 text-[10px] font-bold uppercase tracking-[0.24em] shrink-0"
         style={{
-          background: 'hsl(var(--card))',
+          background: 'hsl(var(--card) / 0.7)',
           borderBottom: '1px solid hsl(var(--border) / 0.5)',
           color: 'hsl(var(--nx-text-secondary))',
         }}

@@ -99,7 +99,7 @@ export function MarketStrip({
         embedded
           ? undefined
           : {
-              background: 'hsl(var(--card) / 0.85)',
+              background: 'hsl(var(--card) / 0.65)',
               border: '1px solid hsl(var(--border) / 0.5)',
               boxShadow: '0 4px 24px rgba(0,0,0,0.12)',
             }

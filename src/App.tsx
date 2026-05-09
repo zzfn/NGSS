@@ -14,7 +14,6 @@ import { MarketStrip } from './components/MarketStrip'
 import { IndexChart } from './components/IndexChart'
 import { TimeAndSales, useTickEvents } from './components/TimeAndSales'
 import { OptionsChain } from './components/OptionsChain'
-import { TopMovers } from './components/TopMovers'
 import { Heatmap } from './components/Heatmap'
 import { AlertBanner } from './components/AlertBanner'
 import { WorldMap } from './components/WorldMap'
@@ -228,13 +227,13 @@ export function App() {
 
         {view !== 'map' && (<>
           {/* 顶部 sticky 复合区：MarketStrip + Ticker + IndexChart + TagFilter，滚动 WatchList 时持续可见 */}
-          <div ref={topStickyRef} className="sticky top-11 z-30">
+          <div ref={topStickyRef} className="sticky top-11 z-30 backdrop-blur-sm">
             {/* 顶部：左 KPI + 右 Ticker 跑马灯（彭博/雅虎财经风），全宽紧贴 */}
             {!showLoading && !empty && (
               <div
                 className="flex flex-col lg:flex-row items-stretch overflow-hidden"
                 style={{
-                  background: 'hsl(var(--card) / 0.92)',
+                  background: 'hsl(var(--card) / 0.65)',
                   borderBottom: '1px solid hsl(var(--border) / 0.6)',
                 }}
               >
@@ -268,7 +267,7 @@ export function App() {
               <div
                 className="px-3 py-1"
                 style={{
-                  background: 'hsl(var(--card) / 0.95)',
+                  background: 'hsl(var(--card) / 0.7)',
                   borderBottom: '1px solid hsl(var(--border) / 0.5)',
                 }}
               >
@@ -294,22 +293,19 @@ export function App() {
               </div>
               {isWide && (
                 <aside
-                  className="w-[420px] xl:w-[480px] 2xl:w-[560px] shrink-0 sticky overflow-hidden"
+                  className="w-[420px] xl:w-[480px] 2xl:w-[560px] shrink-0 sticky overflow-hidden backdrop-blur-sm"
                   style={{
                     top: 44 + topH,
                     height: leftH > 0
                       ? `min(${leftH}px, calc(100vh - ${44 + topH + 28}px))`
                       : `calc(100vh - ${44 + topH + 28}px)`,
-                    background: 'hsl(var(--card) / 0.95)',
+                    background: 'hsl(var(--card) / 0.7)',
                     borderLeft: '1px solid hsl(var(--border) / 0.6)',
                   }}
                 >
                   <div className="h-full flex flex-col overflow-y-auto">
                     <div className="shrink-0 border-b" style={{ borderColor: 'hsl(var(--border) / 0.6)' }}>
                       <Heatmap nodes={allNodes} onSelect={setSelected} />
-                    </div>
-                    <div className="shrink-0 border-b" style={{ borderColor: 'hsl(var(--border) / 0.6)' }}>
-                      <TopMovers nodes={allNodes} onSelect={setSelected} />
                     </div>
                     <div className="shrink-0 border-b" style={{ borderColor: 'hsl(var(--border) / 0.6)' }}>
                       <OptionsChain nodes={allNodes} onSelect={setSelected} />
