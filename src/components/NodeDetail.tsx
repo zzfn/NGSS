@@ -11,6 +11,7 @@ import {
   YAxis,
 } from 'recharts'
 import { Flag } from './Flag'
+import { IncidentTimeline } from './IncidentTimeline'
 import { bytes, pct, relativeAge, uptime } from '../utils/format'
 import { deriveUsage, displayName, osLabel, virtLabel } from '../utils/derive'
 import { ispColor, shortCron } from '../utils/tcpping'
@@ -48,6 +49,7 @@ interface Props {
   showSource?: boolean
   fetchTcpHistory?: (uuid: string) => Promise<TcpPingRecord[]>
   fetchUptimeHistory?: (uuid: string) => Promise<HistorySample[]>
+  fetchIncidentHistory?: (uuid: string, days: number) => Promise<HistorySample[]>
   inline?: boolean
   onlineViewers?: number | null
 }
@@ -251,6 +253,7 @@ export function NodeDetail({
   showSource,
   fetchTcpHistory,
   fetchUptimeHistory,
+  fetchIncidentHistory,
   inline = false,
   onlineViewers,
 }: Props) {
@@ -724,6 +727,16 @@ export function NodeDetail({
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
+              </Panel>
+            )}
+            {/* 宕机事件时间线 */}
+            {fetchIncidentHistory && (
+              <Panel title="宕机事件时间线">
+                <IncidentTimeline
+                  uuid={node.uuid}
+                  online={node.online}
+                  fetchIncidentHistory={fetchIncidentHistory}
+                />
               </Panel>
             )}
           </div>

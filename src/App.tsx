@@ -14,7 +14,6 @@ import { AlertBanner } from './components/AlertBanner'
 import { WorldMap } from './components/WorldMap'
 import { NodeDetail } from './components/NodeDetail'
 import { NodeGrid } from './components/NodeGrid'
-import { UptimeTimeline } from './components/UptimeTimeline'
 import { deriveUsage } from './utils/derive'
 import { resolveCoords } from './utils/coords'
 import type { View, Node, TcpPingRecord, HistorySample } from './types'
@@ -382,6 +381,9 @@ function StatusCounts({
     warn:  nodes.filter(n => nodeStatus(n) === 'warn').length,
     alert: nodes.filter(n => nodeStatus(n) === 'alert').length,
   }
+  const onlinePct = nodes.length > 0
+    ? ((counts.ok + counts.warn) / nodes.length) * 100
+    : null
 
   const rows: { key: StatusKey; label: string; color: string }[] = [
     { key: 'ok',    label: '正常',   color: 'hsl(142 71% 45%)' },
@@ -456,6 +458,39 @@ function StatusCounts({
           </button>
         )
       })}
+
+      {/* 整体在线率 */}
+      {onlinePct != null && (
+        <div style={{
+          borderTop: '1px dashed hsl(var(--border) / 0.4)',
+          marginTop: 4,
+          paddingTop: 6,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 8,
+        }}>
+          <span style={{
+            fontFamily: 'ui-monospace, monospace',
+            fontSize: 9,
+            letterSpacing: '0.18em',
+            textTransform: 'uppercase',
+            color: 'hsl(var(--muted-foreground))',
+          }}>
+            在线率
+          </span>
+          <span style={{
+            fontFamily: 'ui-monospace, monospace',
+            fontWeight: 700,
+            fontSize: 13,
+            color: onlinePct >= 99 ? 'hsl(142 71% 45%)' :
+                   onlinePct >= 90 ? 'hsl(45 90% 52%)' :
+                   'hsl(0 72% 55%)',
+          }}>
+            {onlinePct.toFixed(1)}%
+          </span>
+        </div>
+      )}
     </div>
   )
 }
@@ -565,7 +600,7 @@ function MiniWorldMap({
 export function App() {
   const isMobile = useIsMobile()
   const { config, error: configError } = useConfig()
-  const { nodes, errors, loading, onlineViewers, fetchNodeTcpHistory, fetchUptimeHistory } = useNodes(config)
+  const { nodes, errors, loading, onlineViewers, fetchNodeTcpHistory, fetchUptimeHistory, fetchIncidentHistory } = useNodes(config)
   const deferredNodes = useDeferredValue(nodes)
   const navigate = useNavigate()
 
@@ -682,7 +717,7 @@ export function App() {
   const logo = config.site_logo || DEFAULT_LOGO
   const empty = list.length === 0
   const hasErrors = errors.length > 0
-  const showLoading = loading && allNodes.length === 0
+  const showLoading = loading
 
   return (
     <>
@@ -696,6 +731,7 @@ export function App() {
               showSource={(config.site_tokens?.length ?? 0) > 1}
               fetchTcpHistory={fetchNodeTcpHistory}
               fetchUptimeHistory={fetchUptimeHistory}
+              fetchIncidentHistory={fetchIncidentHistory}
               onlineViewers={onlineViewers}
             />
           }
@@ -764,7 +800,6 @@ export function App() {
                         </div>
                         {/* 排行榜 */}
                         <TopRanking nodes={allNodes} onSelect={uuid => navigate('/node/' + uuid)} />
-                        <UptimeTimeline nodes={allNodes} fetchUptimeHistory={fetchUptimeHistory} />
                       </div>
                     )}
 
@@ -784,7 +819,7 @@ export function App() {
 
                     {/* 节点卡片网格 */}
                     {!showLoading && !empty && (
-                      <NodeGrid nodes={list} onSelect={uuid => navigate('/node/' + uuid)} />
+                      <NodeGrid nodes={list} onSelect={uuid => navigate('/node/' + uuid)} fetchUptimeHistory={fetchUptimeHistory} />
                     )}
                   </>
 
@@ -845,11 +880,12 @@ function MapRoute({ nodes, onSelect, onClose }: {
   )
 }
 
-function NodeDetailRoute({ nodes, showSource, fetchTcpHistory, fetchUptimeHistory, onlineViewers }: {
+function NodeDetailRoute({ nodes, showSource, fetchTcpHistory, fetchUptimeHistory, fetchIncidentHistory, onlineViewers }: {
   nodes: Map<string, Node>
   showSource: boolean
   fetchTcpHistory: (uuid: string) => Promise<TcpPingRecord[]>
   fetchUptimeHistory: (uuid: string) => Promise<HistorySample[]>
+  fetchIncidentHistory: (uuid: string, days: number) => Promise<HistorySample[]>
   onlineViewers: number | null
 }) {
   const { uuid } = useParams<{ uuid: string }>()
@@ -862,6 +898,7 @@ function NodeDetailRoute({ nodes, showSource, fetchTcpHistory, fetchUptimeHistor
       showSource={showSource}
       fetchTcpHistory={fetchTcpHistory}
       fetchUptimeHistory={fetchUptimeHistory}
+      fetchIncidentHistory={fetchIncidentHistory}
       onlineViewers={onlineViewers}
     />
   )

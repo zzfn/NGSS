@@ -1,4 +1,4 @@
-import { memo, useMemo, useState, useCallback } from 'react'
+import { memo, useMemo, useState, useCallback, useEffect, useRef } from 'react'
 import { Flag } from './Flag'
 import { cpuLabel, deriveUsage, displayName } from '../utils/derive'
 import { bytes } from '../utils/format'
@@ -39,6 +39,55 @@ function buildWavePath(samples: HistorySample[], w: number, h: number): string {
       return `${i === 0 ? 'M' : 'L'}${x},${y}`
     })
     .join(' ')
+}
+
+// ── 24H 在线率色块条 ───────────────────────────────────────────────────────────
+const STRIP_COLS = 40
+
+function UptimeStrip({ slots }: { slots: HistorySample[] | null }) {
+  const pct = useMemo(() => {
+    if (!slots || slots.length === 0) return null
+    return (slots.filter(s => s.online).length / slots.length) * 100
+  }, [slots])
+
+  const pctColor =
+    pct == null ? 'hsl(var(--muted-foreground))' :
+    pct >= 99   ? 'hsl(142 71% 45%)' :
+    pct >= 95   ? 'hsl(45 90% 52%)'  :
+                  'hsl(0 72% 55%)'
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 34px', gap: 4, alignItems: 'center' }}>
+      <span style={{ fontSize: 8, fontFamily: 'JetBrains Mono, ui-monospace, monospace', color: 'hsl(var(--muted-foreground))', opacity: 0.6, letterSpacing: '0.08em' }}>
+        24H
+      </span>
+
+      <div style={{ display: 'flex', gap: 1.5, height: 3 }}>
+        {slots === null ? (
+          Array.from({ length: STRIP_COLS }, (_, i) => (
+            <div key={i} style={{ flex: 1, height: 3, borderRadius: 1, background: 'hsl(var(--border) / 0.25)' }} />
+          ))
+        ) : (
+          <>
+            {Array.from({ length: Math.max(0, STRIP_COLS - slots.length) }, (_, i) => (
+              <div key={`p${i}`} style={{ flex: 1, height: 3, borderRadius: 1, background: 'hsl(var(--border) / 0.12)' }} />
+            ))}
+            {slots.slice(-STRIP_COLS).map((s, i) => (
+              <div
+                key={i}
+                title={`${new Date(s.t).toLocaleString()} · ${s.online ? '在线' : '离线'}`}
+                style={{ flex: 1, height: 3, borderRadius: 1, background: s.online ? 'hsl(142 71% 45%)' : 'hsl(0 72% 55%)', opacity: 0.85 }}
+              />
+            ))}
+          </>
+        )}
+      </div>
+
+      <span style={{ fontSize: 8, fontFamily: 'JetBrains Mono, ui-monospace, monospace', color: pctColor, textAlign: 'right', opacity: pct == null ? 0.35 : 1 }}>
+        {pct != null ? `${pct.toFixed(1)}%` : '···'}
+      </span>
+    </div>
+  )
 }
 
 // ── 进度条行（严格对齐 wireframe .bar-row） ───────────────────────────────────
@@ -120,13 +169,35 @@ const STATUS_COLOR = {
 export const GridCard = memo(function GridCard({
   node,
   onSelect,
+  fetchUptimeHistory,
 }: {
   node: Node
   onSelect?: (uuid: string) => void
+  fetchUptimeHistory?: (uuid: string) => Promise<HistorySample[]>
 }) {
   const u      = deriveUsage(node)
   const status = resolveStatus(node)
   const color  = STATUS_COLOR[status]
+
+  // 24H 在线率 —— IntersectionObserver 触发懒加载，防止全量并发请求
+  const cardRef = useRef<HTMLButtonElement>(null)
+  const [uptimeSlots, setUptimeSlots] = useState<HistorySample[] | null>(null)
+  const fetchedRef = useRef(false)
+
+  useEffect(() => {
+    if (!fetchUptimeHistory) return
+    const el = cardRef.current
+    if (!el) return
+    const obs = new IntersectionObserver(([entry]) => {
+      if (!entry?.isIntersecting || fetchedRef.current) return
+      fetchedRef.current = true
+      fetchUptimeHistory(node.uuid)
+        .then(setUptimeSlots)
+        .catch(() => setUptimeSlots([]))
+    }, { threshold: 0.1 })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [node.uuid, fetchUptimeHistory])
 
   const cronNames = useMemo(
     () => [...new Set(node.tcpPings.map(p => p.cron))].sort(),
@@ -177,6 +248,7 @@ export const GridCard = memo(function GridCard({
 
   return (
     <button
+      ref={cardRef}
       type="button"
       onClick={() => onSelect?.(node.uuid)}
       className="text-left cursor-pointer relative flex flex-col"
@@ -341,6 +413,11 @@ export const GridCard = memo(function GridCard({
         )}
       </div>
 
+      {/* ── 24H 在线率色块条 ── */}
+      {fetchUptimeHistory && (
+        <UptimeStrip slots={uptimeSlots} />
+      )}
+
       {/* ── foot / tri-net ── */}
       {/* wireframe: .foot { border-top:1px dashed var(--line-soft); padding-top:6px; margin-top:auto } */}
       <div style={{
@@ -395,16 +472,19 @@ export const GridCard = memo(function GridCard({
   prev.node.online === next.node.online &&
   prev.node.dynamic?.timestamp === next.node.dynamic?.timestamp &&
   prev.node.history === next.node.history &&
-  prev.node.tcpPings === next.node.tcpPings,
+  prev.node.tcpPings === next.node.tcpPings &&
+  prev.fetchUptimeHistory === next.fetchUptimeHistory,
 )
 
 // ── 网格容器 ──────────────────────────────────────────────────────────────────
 export function NodeGrid({
   nodes,
   onSelect,
+  fetchUptimeHistory,
 }: {
   nodes: Node[]
   onSelect?: (uuid: string) => void
+  fetchUptimeHistory?: (uuid: string) => Promise<HistorySample[]>
 }) {
   if (!nodes.length) {
     return (
@@ -421,12 +501,12 @@ export function NodeGrid({
       style={{
         padding: 12,
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(max(160px, 19%), 1fr))',
         gap: 12,
       }}
     >
       {nodes.map(n => (
-        <GridCard key={n.uuid} node={n} onSelect={onSelect} />
+        <GridCard key={n.uuid} node={n} onSelect={onSelect} fetchUptimeHistory={fetchUptimeHistory} />
       ))}
     </div>
   )

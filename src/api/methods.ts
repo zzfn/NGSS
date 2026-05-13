@@ -1,6 +1,21 @@
 import type { RpcClient } from './client'
 import type { DynamicSummary, StaticData } from '../types'
 
+// 订阅服务端动态摘要推送事件
+export interface DynamicSummaryEvent extends DynamicSummary {
+  // 后端推送格式与 DynamicSummary 完全一致（uuid + timestamp + 所有字段）
+}
+
+export const subscribeDynamicSummary = (
+  c: RpcClient,
+  handler: (event: DynamicSummaryEvent) => void,
+): Promise<() => Promise<void>> =>
+  c.subscribe<DynamicSummaryEvent>(
+    'agent_subscribe_dynamic_summary',
+    'agent_unsubscribe_dynamic_summary',
+    handler,
+  )
+
 export const listAgentUuids = (c: RpcClient) =>
   c.call<{ uuids?: string[] }>('nodeget-server_list_all_agent_uuid', {}).then(r => r?.uuids || [])
 

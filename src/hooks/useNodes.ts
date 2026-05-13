@@ -1,6 +1,7 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BackendPool } from '../api/pool'
-import { activeConnections, dynamicSummaryMulti, kvGetMulti, listAgentUuids, queryNodeTcpPings, queryTcpPings, queryTcpPingsLatest, querySummaryBuckets, querySummaryHistory, querySummaryHistoryMulti, staticDataMulti } from '../api/methods'
+import { activeConnections, dynamicSummaryMulti, kvGetMulti, listAgentUuids, queryNodeTcpPings, queryTcpPings, queryTcpPingsLatest, querySummaryBuckets, querySummaryHistory, querySummaryHistoryMulti, staticDataMulti, subscribeDynamicSummary } from '../api/methods'
+import type { DynamicSummaryEvent } from '../api/methods'
 import { isOnline } from '../utils/status'
 import type { DynamicSummary, HistorySample, Node, NodeMeta, SiteConfig, TcpPingRecord } from '../types'
 
@@ -105,7 +106,6 @@ export function useNodes(config: SiteConfig | null) {
   const [errors, setErrors] = useState<BackendError[]>([])
   const [loading, setLoading] = useState(true)
   const [onlineViewers, setOnlineViewers] = useState<number | null>(null)
-  const firstDynRef = useRef(false)
   const poolRef = useRef<BackendPool | null>(null)
   // 每个 entry（后端 URL）单独记录上次成功拉取的最大 timestamp，用于增量轮询游标
   const lastTcpPingTsRef = useRef<Map<string, number>>(new Map())
@@ -118,7 +118,6 @@ export function useNodes(config: SiteConfig | null) {
       return
     }
     setLoading(true)
-    firstDynRef.current = false
     const pool = new BackendPool(config.site_tokens)
     poolRef.current = pool
     const sourceUuids = new Map<string, string[]>()
@@ -146,132 +145,146 @@ export function useNodes(config: SiteConfig | null) {
       agentsRef.current = seed
       setAgents(seed)
 
-      await Promise.all(
-        pool.entries.map(async entry => {
-          const uuids = sourceUuids.get(entry.name) || []
-          if (!uuids.length) return
+      // meta/static/tcpping/history 不在关键路径上，后台并行加载
+      const backgroundLoad = async () => {
+        await Promise.all(
+          pool.entries.map(async entry => {
+            const uuids = sourceUuids.get(entry.name) || []
+            if (!uuids.length) return
 
-          const kvItems = uuids.flatMap(u => META_KEYS.map(k => ({ namespace: u, key: k })))
-          const [meta, stat] = await Promise.allSettled([
-            kvGetMulti(entry.client, kvItems),
-            staticDataMulti(entry.client, uuids, STATIC_FIELDS),
-          ])
+            const kvItems = uuids.flatMap(u => META_KEYS.map(k => ({ namespace: u, key: k })))
+            const [meta, stat] = await Promise.allSettled([
+              kvGetMulti(entry.client, kvItems),
+              staticDataMulti(entry.client, uuids, STATIC_FIELDS),
+            ])
 
-          setAgents(prev => {
-            const next = new Map(prev)
-            agentsRef.current = next
-
-            if (meta.status === 'fulfilled' && meta.value) {
-              const grouped = new Map<string, Record<string, unknown>>()
-              for (const row of meta.value) {
-                if (!row || row.value == null) continue
-                let bucket = grouped.get(row.namespace)
-                if (!bucket) grouped.set(row.namespace, (bucket = {}))
-                bucket[row.key] = row.value
-              }
-              for (const uuid of uuids) {
-                const cur = next.get(uuid) ?? blankAgent(uuid, entry.name)
-                next.set(uuid, { ...cur, meta: parseMeta(grouped.get(uuid) ?? {}) })
-              }
-            }
-
-            if (stat.status === 'fulfilled' && stat.value) {
-              for (const row of stat.value) {
-                if (!row.uuid) continue
-                const cur = next.get(row.uuid) ?? blankAgent(row.uuid, entry.name)
-                next.set(row.uuid, { ...cur, static: row })
-              }
-            }
-            return next
-          })
-        }),
-      )
-
-      await Promise.all([tickDynamic(), bootstrapTcpPing()])
-
-      // 预加载历史波形（30分钟），每个后端一次批量请求
-      const now = Date.now()
-      const from = now - 30 * 60_000
-      await Promise.allSettled(
-        pool.entries.map(async entry => {
-          const uuids = sourceUuids.get(entry.name) || []
-          if (!uuids.length) return
-          try {
-            const rows = await querySummaryHistoryMulti(entry.client, uuids, from, now, DYNAMIC_FIELDS)
-            if (!rows?.length) return
-            // 按 uuid 分组后批量写入，只触发一次 setHistory
-            const byUuid = new Map<string, typeof rows>()
-            for (const row of rows) {
-              if (!row.uuid) continue
-              const arr = byUuid.get(row.uuid) ?? []
-              arr.push(row)
-              byUuid.set(row.uuid, arr)
-            }
-            setHistory(prev => {
+            setAgents(prev => {
               const next = new Map(prev)
-              for (const [uuid, newRows] of byUuid) {
-                const existing = prev.get(uuid) || []
-                const merged = [...newRows.map(sampleFrom), ...existing]
-                const seen = new Set<number>()
-                const deduped = merged.filter(s => { if (seen.has(s.t)) return false; seen.add(s.t); return true })
-                deduped.sort((a, b) => a.t - b.t)
-                next.set(uuid, deduped.slice(-HISTORY_LIMIT))
+              agentsRef.current = next
+
+              if (meta.status === 'fulfilled' && meta.value) {
+                const grouped = new Map<string, Record<string, unknown>>()
+                for (const row of meta.value) {
+                  if (!row || row.value == null) continue
+                  let bucket = grouped.get(row.namespace)
+                  if (!bucket) grouped.set(row.namespace, (bucket = {}))
+                  bucket[row.key] = row.value
+                }
+                for (const uuid of uuids) {
+                  const cur = next.get(uuid) ?? blankAgent(uuid, entry.name)
+                  next.set(uuid, { ...cur, meta: parseMeta(grouped.get(uuid) ?? {}) })
+                }
+              }
+
+              if (stat.status === 'fulfilled' && stat.value) {
+                for (const row of stat.value) {
+                  if (!row.uuid) continue
+                  const cur = next.get(row.uuid) ?? blankAgent(row.uuid, entry.name)
+                  next.set(row.uuid, { ...cur, static: row })
+                }
               }
               return next
             })
-          } catch {}
-        }),
-      )
+          }),
+        )
 
-      setLoading(false)
-    }
+        bootstrapTcpPing().catch(() => {})
 
-    let dynPending = false
-    const tickDynamic = async () => {
-      if (dynPending) return
-      dynPending = true
-      try {
-        const updates: DynamicSummary[] = []
+        // 预加载历史波形（30分钟）
+        const now = Date.now()
+        const from = now - 30 * 60_000
         await Promise.allSettled(
           pool.entries.map(async entry => {
             const uuids = sourceUuids.get(entry.name) || []
             if (!uuids.length) return
             try {
-              const rows = await dynamicSummaryMulti(entry.client, uuids, DYNAMIC_FIELDS)
-              for (const row of rows || []) updates.push(row)
+              const rows = await querySummaryHistoryMulti(entry.client, uuids, from, now, DYNAMIC_FIELDS)
+              if (!rows?.length) return
+              const byUuid = new Map<string, typeof rows>()
+              for (const row of rows) {
+                if (!row.uuid) continue
+                const arr = byUuid.get(row.uuid) ?? []
+                arr.push(row)
+                byUuid.set(row.uuid, arr)
+              }
+              setHistory(prev => {
+                const next = new Map(prev)
+                for (const [uuid, newRows] of byUuid) {
+                  const existing = prev.get(uuid) || []
+                  const merged = [...newRows.map(sampleFrom), ...existing]
+                  const seen = new Set<number>()
+                  const deduped = merged.filter(s => { if (seen.has(s.t)) return false; seen.add(s.t); return true })
+                  deduped.sort((a, b) => a.t - b.t)
+                  next.set(uuid, deduped.slice(-HISTORY_LIMIT))
+                }
+                return next
+              })
             } catch {}
           }),
         )
-        if (!updates.length) return
-
-        // 直接 mutate ref，无需克隆整个 Map
-        for (const row of updates) liveRef.current.set(row.uuid, row)
-
-        if (!firstDynRef.current && updates.length > 0) {
-          firstDynRef.current = true
-        }
-
-        startTransition(() => {
-          setLiveVer(v => v + 1)
-          setHistory(prev => {
-            let next: Map<string, HistorySample[]> | null = null
-            for (const row of updates) {
-              const arr = prev.get(row.uuid) || []
-              const sample = sampleFrom(row)
-              // 时间戳相同说明本轮没有新数据，跳过
-              if (arr.length && arr[arr.length - 1].t === sample.t) continue
-              if (!next) next = new Map(prev)  // 懒克隆：只有真正有变化才分配
-              // slice(1)+push 比 concat+slice 少一次数组分配
-              const newArr = arr.length >= HISTORY_LIMIT ? arr.slice(1) : arr.slice()
-              newArr.push(sample)
-              next.set(row.uuid, newArr)
-            }
-            return next ?? prev  // 没有任何变化时返回原引用，React 跳过重渲染
-          })
-        })
-      } finally {
-        dynPending = false
       }
+
+      // 关键路径：只等动态快照（决定在线状态），meta/history/tcpping 后台并行
+      backgroundLoad().catch(() => {})
+      await tickDynamicOnce()
+      // 与 setLoading 一起批处理：此时 liveRef 已有数据，确保首帧不出现离线闪烁
+      setLiveVer(v => v + 1)
+      setLoading(false)
+    }
+
+    // 一次性快照：bootstrap 时获取初始数据，不轮询
+    const tickDynamicOnce = async () => {
+      const updates: DynamicSummary[] = []
+      await Promise.allSettled(
+        pool.entries.map(async entry => {
+          const uuids = sourceUuids.get(entry.name) || []
+          if (!uuids.length) return
+          try {
+            const rows = await dynamicSummaryMulti(entry.client, uuids, DYNAMIC_FIELDS)
+            for (const row of rows || []) updates.push(row)
+          } catch {}
+        }),
+      )
+      if (!updates.length) return
+
+      // 直接 mutate ref，无需克隆整个 Map
+      for (const row of updates) liveRef.current.set(row.uuid, row)
+
+      // 仅更新 history，liveVer 由 bootstrap 末尾统一紧急触发（防止 startTransition 延迟导致首帧离线闪烁）
+      startTransition(() => {
+        setHistory(prev => {
+          let next: Map<string, HistorySample[]> | null = null
+          for (const row of updates) {
+            const arr = prev.get(row.uuid) || []
+            const sample = sampleFrom(row)
+            if (arr.length && arr[arr.length - 1].t === sample.t) continue
+            if (!next) next = new Map(prev)
+            const newArr = arr.length >= HISTORY_LIMIT ? arr.slice(1) : arr.slice()
+            newArr.push(sample)
+            next.set(row.uuid, newArr)
+          }
+          return next ?? prev
+        })
+      })
+    }
+
+    // WebSocket 推送事件处理器：每条推送更新 liveRef 并触发 React 重渲染
+    const handleDynamicEvent = (event: DynamicSummaryEvent) => {
+      liveRef.current.set(event.uuid, event)
+      startTransition(() => {
+        setLiveVer(v => v + 1)
+        setHistory(prev => {
+          const arr = prev.get(event.uuid) || []
+          const sample = sampleFrom(event)
+          // 时间戳相同说明数据未更新，跳过
+          if (arr.length && arr[arr.length - 1].t === sample.t) return prev
+          const next = new Map(prev)  // 懒克隆：每个事件只影响一个 uuid
+          const newArr = arr.length >= HISTORY_LIMIT ? arr.slice(1) : arr.slice()
+          newArr.push(sample)
+          next.set(event.uuid, newArr)
+          return next
+        })
+      })
     }
 
     // 将按 uuid 分组的 records 写入 tcpPingMap
@@ -354,18 +367,30 @@ export function useNodes(config: SiteConfig | null) {
     }
 
     const ac = new AbortController()
+    // 收集所有 WebSocket 订阅的取消函数，cleanup 时统一调用
+    const unsubscribeFns: Array<() => Promise<void>> = []
 
-    bootstrap().catch((e: unknown) => {
-      setErrors(prev => [...prev, { source: '*', error: e }])
-      setLoading(false)
-    })
-
-    ;(async () => {
-      while (!ac.signal.aborted) {
-        await new Promise(r => setTimeout(r, DYN_INTERVAL_MS))
-        if (!ac.signal.aborted) await tickDynamic()
-      }
-    })()
+    bootstrap()
+      .then(async () => {
+        // bootstrap 完成后对每个后端建立 WebSocket 订阅
+        if (ac.signal.aborted) return
+        const results = await Promise.allSettled(
+          pool.entries.map(entry =>
+            subscribeDynamicSummary(entry.client, handleDynamicEvent),
+          ),
+        )
+        for (const r of results) {
+          if (r.status === 'fulfilled') {
+            unsubscribeFns.push(r.value)
+          } else {
+            console.warn('[useNodes] subscribeDynamicSummary 失败:', r.reason)
+          }
+        }
+      })
+      .catch((e: unknown) => {
+        setErrors(prev => [...prev, { source: '*', error: e }])
+        setLoading(false)
+      })
 
     ;(async () => {
       while (!ac.signal.aborted) {
@@ -373,11 +398,6 @@ export function useNodes(config: SiteConfig | null) {
         if (!ac.signal.aborted) await tickTcpPing()
       }
     })()
-
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') tickDynamic()
-    }
-    document.addEventListener('visibilitychange', onVisible)
 
     const clockTimer = setInterval(() => setTick(t => t + 1), 5000)
 
@@ -395,7 +415,10 @@ export function useNodes(config: SiteConfig | null) {
       ac.abort()
       clearInterval(clockTimer)
       clearInterval(viewersTimer)
-      document.removeEventListener('visibilitychange', onVisible)
+      // 取消所有 WebSocket 动态摘要订阅
+      for (const unsub of unsubscribeFns) {
+        unsub().catch(e => console.warn('[useNodes] unsubscribe 失败:', e))
+      }
       poolRef.current = null
       lastTcpPingTsRef.current.clear()
       pool.close()
@@ -500,5 +523,32 @@ export function useNodes(config: SiteConfig | null) {
     }
   }, [])
 
-  return { nodes, errors, loading, onlineViewers, fetchNodeTcpHistory, fetchCardHistory, fetchUptimeHistory }
+  const fetchIncidentHistory = useCallback(async (uuid: string, days: number): Promise<HistorySample[]> => {
+    const pool = poolRef.current
+    if (!pool) return []
+    const entry = pool.entries[0]
+    if (!entry) return []
+    const now = Date.now()
+    const from = now - days * 86_400_000
+    const buckets = days * 24  // 每天 24 个桶（小时粒度）
+    try {
+      const rows = await querySummaryBuckets(entry.client, { uuid, from, to: now, buckets, fields: [] }) ?? []
+      // 同 fetchUptimeHistory：从第一个有数据的桶开始，之前视为「未部署」
+      const firstOnline = rows.findIndex(r => r.count > 0)
+      const start = firstOnline >= 0 ? firstOnline : rows.length
+      return rows.slice(start).map(r => ({
+        t: r.t,
+        online: r.count > 0,
+        cpu: null,
+        mem: null,
+        disk: null,
+        netIn: 0,
+        netOut: 0,
+      }))
+    } catch {
+      return []
+    }
+  }, [])
+
+  return { nodes, errors, loading, onlineViewers, fetchNodeTcpHistory, fetchCardHistory, fetchUptimeHistory, fetchIncidentHistory }
 }

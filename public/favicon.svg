@@ -1,5 +1,63 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="10" fill="#0E0E10"/>
-  <rect x="8" y="8" width="27" height="27" fill="none" stroke="#EDEDED" stroke-width="5"/>
-  <rect x="37" y="37" width="19" height="19" fill="#EDEDED"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <!-- N 白色光晕 -->
+    <filter id="ng" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="1.4" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <!-- 圆角裁切 -->
+    <clipPath id="clip">
+      <rect width="32" height="32" rx="7"/>
+    </clipPath>
+  </defs>
+
+  <!-- 背景 -->
+  <rect width="32" height="32" rx="7" fill="#080c14"/>
+
+  <!-- 微点阵纹理 -->
+  <g clip-path="url(#clip)" opacity="0.18">
+    <rect x="0" y="4"  width="32" height="0.4" fill="#22c55e"/>
+    <rect x="0" y="8"  width="32" height="0.4" fill="#22c55e"/>
+    <rect x="0" y="12" width="32" height="0.4" fill="#22c55e"/>
+    <rect x="0" y="16" width="32" height="0.4" fill="#22c55e"/>
+    <rect x="0" y="20" width="32" height="0.4" fill="#22c55e"/>
+    <rect x="0" y="24" width="32" height="0.4" fill="#22c55e"/>
+    <rect x="0" y="28" width="32" height="0.4" fill="#22c55e"/>
+  </g>
+
+  <!-- 四角 bracket -->
+  <path d="M3,9 L3,3 L9,3"   fill="none" stroke="#22c55e" stroke-width="1.4" stroke-linecap="square"/>
+  <path d="M23,3 L29,3 L29,9" fill="none" stroke="#22c55e" stroke-width="1.4" stroke-linecap="square"/>
+  <path d="M3,23 L3,29 L9,29" fill="none" stroke="#22c55e" stroke-width="1.4" stroke-linecap="square"/>
+  <path d="M23,29 L29,29 L29,23" fill="none" stroke="#22c55e" stroke-width="1.4" stroke-linecap="square"/>
+
+  <!-- 色差层：青 (左移 1.5px) -->
+  <svg x="5.5" y="5" width="17" height="22" viewBox="0 0 22 28" opacity="0.45">
+    <rect x="0"  y="0" width="5" height="28" fill="#06b6d4"/>
+    <polygon points="5,0 10,0 17,28 12,28"   fill="#06b6d4"/>
+    <rect x="17" y="0" width="5" height="28" fill="#06b6d4"/>
+  </svg>
+
+  <!-- 色差层：玫红 (右移 1.5px) -->
+  <svg x="8.5" y="5" width="17" height="22" viewBox="0 0 22 28" opacity="0.38">
+    <rect x="0"  y="0" width="5" height="28" fill="#f43f5e"/>
+    <polygon points="5,0 10,0 17,28 12,28"   fill="#f43f5e"/>
+    <rect x="17" y="0" width="5" height="28" fill="#f43f5e"/>
+  </svg>
+
+  <!-- 主 N（白色 + 光晕） -->
+  <g filter="url(#ng)">
+    <svg x="7" y="5" width="17" height="22" viewBox="0 0 22 28">
+      <rect x="0"  y="0" width="5" height="28" fill="white"/>
+      <polygon points="5,0 10,0 17,28 12,28"   fill="white"/>
+      <rect x="17" y="0" width="5" height="28" fill="white"/>
+    </svg>
+  </g>
+
+  <!-- 左下角 LED 点（配合 logo 一致） -->
+  <circle cx="8.5" cy="27" r="1.2" fill="#22c55e"/>
+  <circle cx="8.5" cy="27" r="2.8" fill="#22c55e" opacity="0.18"/>
 </svg>

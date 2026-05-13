@@ -119,7 +119,7 @@ export function Navbar({
             <img
               src={logo}
               alt=""
-              style={{ height: 28, width: 'auto', filter: isDark ? 'invert(1)' : 'none' }}
+              style={{ height: 28, width: 'auto', filter: isDark ? 'none' : 'invert(1)' }}
             />
           )}
         </a>
@@ -197,11 +197,11 @@ export function Navbar({
       >
         {ipInfo && (
           <span
-            className="hidden md:inline-flex items-center gap-1.5 text-[10px] font-mono tracking-[0.08em] group relative cursor-default"
-            style={{ color: 'hsl(var(--muted-foreground))', flexShrink: 0 }}
+            className="hidden md:inline-flex items-center gap-1.5 font-mono group relative cursor-default"
+            style={{ color: 'hsl(var(--muted-foreground))', flexShrink: 0, fontSize: 11, letterSpacing: '0.06em' }}
           >
-            <span style={{ color: 'hsl(var(--foreground))', opacity: 0.9 }}>你在</span>
-            <span>{[ipInfo.city, ipInfo.country_code].filter(Boolean).join(', ') || ipInfo.ip}</span>
+            <span style={{ opacity: 0.55, fontSize: 10 }}>你在</span>
+            <span style={{ color: 'hsl(var(--foreground))', fontWeight: 600 }}>{[ipInfo.city, ipInfo.country_code].filter(Boolean).join(', ') || ipInfo.ip}</span>
             {/* 悬浮详情 */}
             <span
               className="absolute right-0 top-full mt-1.5 hidden group-hover:flex flex-col gap-1 z-50"
@@ -229,19 +229,20 @@ export function Navbar({
         )}
         {onlineViewers != null && onlineViewers > 0 && (
           <span
-            className="hidden sm:inline-flex items-center gap-1.5 text-[10px] font-mono tracking-[0.12em]"
-            style={{ color: 'hsl(142 71% 45%)', flexShrink: 0 }}
+            className="hidden sm:inline-flex items-center gap-1.5 font-mono"
+            style={{ color: 'hsl(142 71% 45%)', flexShrink: 0, letterSpacing: '0.06em' }}
           >
             <span
               style={{
-                display: 'inline-block', width: 5, height: 5, borderRadius: '50%',
+                display: 'inline-block', width: 6, height: 6, borderRadius: '50%',
                 background: 'hsl(142 71% 45%)',
-                boxShadow: '0 0 5px hsl(142 71% 45%)',
+                boxShadow: '0 0 6px hsl(142 71% 45%)',
                 animation: 'live-pulse-wl 1.4s ease-in-out infinite',
+                flexShrink: 0,
               }}
             />
-            <span style={{ fontWeight: 700 }}>{onlineViewers}</span>
-            <span style={{ opacity: 0.75 }}>人围观</span>
+            <span style={{ fontWeight: 800, fontSize: 15, lineHeight: 1 }}>{onlineViewers}</span>
+            <span style={{ opacity: 0.7, fontSize: 11 }}>人围观</span>
           </span>
         )}
         <button
