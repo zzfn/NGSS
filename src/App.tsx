@@ -38,7 +38,7 @@ function initialView(): View {
 // ── 主题色 ────────────────────────────────────────────────────────────────────
 const C_OK   = 'hsl(170 75% 52%)'  // 青绿主色（正常/在线）
 const C_WARN = 'hsl(45 90% 52%)'   // 琥珀（告警）
-const C_BAD  = 'hsl(0 72% 58%)'    // 红（危险/离线）
+const C_BAD  = 'hsl(0 72% 58%)'    // 红（严重/危险）
 
 // ── 聚合流量 Sparkline ────────────────────────────────────────────────────────
 function TrafficSparkline({ nodes }: { nodes: Node[] }) {
@@ -388,7 +388,7 @@ function StatusCounts({
   const rows: { key: StatusKey; label: string; color: string }[] = [
     { key: 'ok',    label: '正常',   color: 'hsl(142 71% 45%)' },
     { key: 'warn',  label: '告警',   color: C_WARN },
-    { key: 'alert', label: '离线',   color: C_BAD },
+    { key: 'alert', label: '严重',   color: C_BAD },
   ]
 
   return (
