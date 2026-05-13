@@ -93,7 +93,7 @@ export function Navbar({
     >
       {/* 左：LOGO + 站点名 */}
       <div
-        className="flex items-center gap-3 pl-3 pr-4 shrink-0 border-r"
+        className="flex items-center gap-2 pl-2 pr-2 sm:gap-3 sm:pl-3 sm:pr-4 shrink-0 border-r"
         style={{ borderColor: divider }}
       >
         {onMenuOpen && (
@@ -149,7 +149,7 @@ export function Navbar({
               borderRadius: 6,
               color: 'hsl(var(--foreground))',
               outline: 'none',
-              width: 140,
+              width: 'clamp(112px, 18vw, 140px)',
             }}
           />
         </div>

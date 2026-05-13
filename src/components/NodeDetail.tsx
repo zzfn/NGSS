@@ -557,8 +557,8 @@ export function NodeDetail({
             valueColor={diskColor}
           />
           <StatCell
-            label="网络 ↓/↑"
-            value={`${bytes(u.netIn ?? 0)}/s`}
+            label="网络"
+            value={`↓ ${bytes(u.netIn ?? 0)}/s`}
             sub={`↑ ${bytes(u.netOut ?? 0)}/s`}
             valueColor={
               (u.netIn ?? 0) >= 3e6 ? 'hsl(0 72% 60%)' :

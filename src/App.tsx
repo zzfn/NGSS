@@ -21,6 +21,17 @@ import type { View, Node, TcpPingRecord, HistorySample } from './types'
 
 const DEFAULT_LOGO = `${import.meta.env.BASE_URL}logo.png`
 
+// ── 移动端检测 hook ────────────────────────────────────────────────────────────
+function useIsMobile() {
+  const [mobile, setMobile] = useState(() => window.innerWidth < 640)
+  useEffect(() => {
+    const handler = () => setMobile(window.innerWidth < 640)
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
+  }, [])
+  return mobile
+}
+
 function initialView(): View {
   return 'cards'
 }
@@ -297,7 +308,7 @@ function TopRanking({ nodes, onSelect }: { nodes: Node[]; onSelect: (uuid: strin
   const title = 'text-[10px] font-mono uppercase tracking-widest mb-2 opacity-75'
 
   return (
-    <div className="flex">
+    <div className="flex flex-col sm:flex-row">
       {/* Top CPU */}
       <div className={col} style={{ borderRight: '1px solid hsl(var(--border) / 0.3)' }}>
         <div className={title}>TOP CPU</div>
@@ -359,10 +370,12 @@ function StatusCounts({
   nodes,
   statusFilter,
   onStatusFilter,
+  isMobile = false,
 }: {
   nodes: Node[]
   statusFilter: StatusKey | null
   onStatusFilter: (s: StatusKey) => void
+  isMobile?: boolean
 }) {
   const counts = {
     ok:    nodes.filter(n => nodeStatus(n) === 'ok').length,
@@ -379,10 +392,12 @@ function StatusCounts({
   return (
     <div
       style={{
-        borderRight: '1px solid hsl(var(--border) / 0.5)',
-        minWidth: 180,
+        borderRight: isMobile ? 'none' : '1px solid hsl(var(--border) / 0.5)',
+        borderBottom: isMobile ? '1px solid hsl(var(--border) / 0.5)' : 'none',
+        minWidth: isMobile ? undefined : 'min(180px, 45vw)',
         display: 'flex',
-        flexDirection: 'column',
+        flexDirection: isMobile ? 'row' : 'column',
+        flexWrap: 'wrap',
         justifyContent: 'center',
         gap: 2,
         padding: '8px 10px',
@@ -449,9 +464,11 @@ function StatusCounts({
 function MiniWorldMap({
   nodes,
   onViewMap,
+  hidden = false,
 }: {
   nodes: Node[]
   onViewMap?: () => void
+  hidden?: boolean
 }) {
   const W = 320
   const H = 110
@@ -476,6 +493,8 @@ function MiniWorldMap({
     }
     return [...seen.values()]
   }, [nodes])
+
+  if (hidden) return null
 
   return (
     <button
@@ -544,6 +563,7 @@ function MiniWorldMap({
 
 
 export function App() {
+  const isMobile = useIsMobile()
   const { config, error: configError } = useConfig()
   const { nodes, errors, loading, onlineViewers, fetchNodeTcpHistory, fetchUptimeHistory } = useNodes(config)
   const deferredNodes = useDeferredValue(nodes)
@@ -729,17 +749,18 @@ export function App() {
                         <div style={{
                           borderBottom: '1px solid hsl(var(--border) / 0.35)',
                           display: 'grid',
-                          gridTemplateColumns: 'auto 2fr 1fr',
+                          gridTemplateColumns: isMobile ? '1fr' : 'auto 2fr 1fr',
                         }}>
                           <StatusCounts
                             nodes={allNodes}
                             statusFilter={statusFilter}
                             onStatusFilter={s => setStatusFilter(prev => prev === s ? null : s)}
+                            isMobile={isMobile}
                           />
                           <div className="min-w-0 overflow-hidden">
                             <TrafficSparkline nodes={allNodes} />
                           </div>
-                          <MiniWorldMap nodes={allNodes} onViewMap={() => navigate('/map')} />
+                          <MiniWorldMap nodes={allNodes} onViewMap={() => navigate('/map')} hidden={isMobile} />
                         </div>
                         {/* 排行榜 */}
                         <TopRanking nodes={allNodes} onSelect={uuid => navigate('/node/' + uuid)} />
