@@ -194,50 +194,72 @@ function TrafficSparkline({ nodes }: { nodes: Node[] }) {
 }
 
 // ── 排行榜 ──────────────────────────────────────────────────────────────────
-function TopRanking({ nodes, onSelect }: { nodes: Node[]; onSelect: (uuid: string) => void }) {
-  function fmtSpeed(v: number) {
-    if (v >= 1e9) return `${(v / 1e9).toFixed(1)}G`
-    if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`
-    if (v >= 1e3) return `${(v / 1e3).toFixed(0)}K`
-    return `${v.toFixed(0)}B`
+function fmtSpeed(v: number) {
+  if (v >= 1e9) return `${(v / 1e9).toFixed(1)}G`
+  if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`
+  if (v >= 1e3) return `${(v / 1e3).toFixed(0)}K`
+  return `${v.toFixed(0)}B`
+}
+
+function buildRankedIds(nodes: Node[]) {
+  const online = nodes.filter(n => n.online)
+  return {
+    cpu: [...online]
+      .filter(n => n.dynamic?.cpu_usage != null)
+      .sort((a, b) => b.dynamic!.cpu_usage! - a.dynamic!.cpu_usage!)
+      .slice(0, 5).map(n => n.uuid),
+    mem: [...online]
+      .filter(n => n.dynamic?.used_memory && n.dynamic?.total_memory)
+      .sort((a, b) => b.dynamic!.used_memory! / b.dynamic!.total_memory! - a.dynamic!.used_memory! / a.dynamic!.total_memory!)
+      .slice(0, 5).map(n => n.uuid),
+    traffic: [...online]
+      .filter(n => n.dynamic)
+      .sort((a, b) => {
+        const ta = (a.dynamic!.receive_speed ?? 0) + (a.dynamic!.transmit_speed ?? 0)
+        const tb = (b.dynamic!.receive_speed ?? 0) + (b.dynamic!.transmit_speed ?? 0)
+        return tb - ta
+      })
+      .slice(0, 5).map(n => n.uuid),
   }
+}
+
+function TopRanking({ nodes, onSelect }: { nodes: Node[]; onSelect: (uuid: string) => void }) {
+  // 排名顺序稳定：首次有数据立即填充，之后每 20s 才重排
+  const [rankedIds, setRankedIds] = useState<ReturnType<typeof buildRankedIds>>({ cpu: [], mem: [], traffic: [] })
+  const lastRankTime = useRef(0)
+  const rankedIdsRef = useRef(rankedIds)
+  rankedIdsRef.current = rankedIds
+
+  useEffect(() => {
+    const hasData = nodes.some(n => n.online && n.dynamic != null)
+    if (!hasData) return
+    const now = Date.now()
+    if (rankedIdsRef.current.cpu.length === 0 || now - lastRankTime.current > 20_000) {
+      lastRankTime.current = now
+      setRankedIds(buildRankedIds(nodes))
+    }
+  }, [nodes])
+
+  // 实时值从 nodeMap 取
+  const nodeMap = useMemo(() => new Map(nodes.map(n => [n.uuid, n])), [nodes])
 
   const online = nodes.filter(n => n.online)
-
-  const topCpu = [...online]
-    .filter(n => n.dynamic?.cpu_usage != null)
-    .sort((a, b) => (b.dynamic!.cpu_usage!) - (a.dynamic!.cpu_usage!))
-    .slice(0, 5)
-
-  const topMem = [...online]
-    .filter(n => n.dynamic?.used_memory && n.dynamic?.total_memory)
-    .sort((a, b) => {
-      const pa = a.dynamic!.used_memory! / a.dynamic!.total_memory!
-      const pb = b.dynamic!.used_memory! / b.dynamic!.total_memory!
-      return pb - pa
-    })
-    .slice(0, 5)
-
-  const topTraffic = [...online]
-    .filter(n => n.dynamic)
-    .sort((a, b) => {
-      const ta = (a.dynamic!.receive_speed ?? 0) + (a.dynamic!.transmit_speed ?? 0)
-      const tb = (b.dynamic!.receive_speed ?? 0) + (b.dynamic!.transmit_speed ?? 0)
-      return tb - ta
-    })
-    .slice(0, 5)
-
   if (online.length === 0) return null
 
-  const maxCpu = topCpu[0]?.dynamic?.cpu_usage ?? 1
-  const maxMem = topMem[0] ? topMem[0].dynamic!.used_memory! / topMem[0].dynamic!.total_memory! : 1
-  const maxTx  = topTraffic[0] ? (topTraffic[0].dynamic!.receive_speed ?? 0) + (topTraffic[0].dynamic!.transmit_speed ?? 0) : 1
+  const topCpu     = rankedIds.cpu.map(id => nodeMap.get(id)).filter(Boolean) as Node[]
+  const topMem     = rankedIds.mem.map(id => nodeMap.get(id)).filter(Boolean) as Node[]
+  const topTraffic = rankedIds.traffic.map(id => nodeMap.get(id)).filter(Boolean) as Node[]
+
+  const maxCpu = Math.max(...topCpu.map(n => n.dynamic?.cpu_usage ?? 0), 1)
+  const maxMem = Math.max(...topMem.map(n => n.dynamic ? n.dynamic.used_memory! / n.dynamic.total_memory! : 0), 1)
+  const maxTx  = Math.max(...topTraffic.map(n => (n.dynamic?.receive_speed ?? 0) + (n.dynamic?.transmit_speed ?? 0)), 1)
 
   function RankRow({ label, value, valueStr, color, max, rank, onClick }: {
     label: string; value: number; valueStr: string; color: string; max: number; rank: number; onClick: () => void
   }) {
     const barW = max > 0 ? Math.max(2, (value / max) * 100) : 0
-    const alpha = 1 - rank * 0.13
+    const alpha = Math.max(0.65, 1 - rank * 0.08)
+    const rankColor = rank === 0 ? C_BAD : rank === 1 ? C_WARN : color
     return (
       <div
         onClick={onClick}
@@ -248,8 +270,8 @@ function TopRanking({ nodes, onSelect }: { nodes: Node[]; onSelect: (uuid: strin
           style={{ background: 'hsl(var(--muted) / 0.4)' }} />
         {/* label + value */}
         <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 3 }}>
-          <span className="truncate text-xs" style={{ color: 'hsl(var(--foreground))', opacity: alpha * 0.85 }}>{label}</span>
-          <span className="font-mono tabular-nums text-xs shrink-0" style={{ color, opacity: alpha }}>{valueStr}</span>
+          <span className="truncate text-xs" style={{ color: 'hsl(var(--foreground))', opacity: alpha }}>{label}</span>
+          <span className="font-mono tabular-nums text-xs shrink-0" style={{ color: rankColor, opacity: alpha }}>{valueStr}</span>
         </div>
         {/* 斜纹进度条 */}
         <div style={{
@@ -261,7 +283,7 @@ function TopRanking({ nodes, onSelect }: { nodes: Node[]; onSelect: (uuid: strin
         }}>
           <div style={{
             position: 'absolute', inset: 0, width: `${barW}%`,
-            backgroundImage: `repeating-linear-gradient(45deg, ${color} 0 3px, transparent 3px 6px)`,
+            backgroundImage: `repeating-linear-gradient(45deg, ${rankColor} 0 3px, transparent 3px 6px)`,
             opacity: 0.6,
             transition: 'width 0.5s ease',
           }} />
@@ -271,13 +293,13 @@ function TopRanking({ nodes, onSelect }: { nodes: Node[]; onSelect: (uuid: strin
   }
 
   const col = 'flex-1 min-w-0 px-3 py-2'
-  const title = 'text-[9px] font-mono uppercase tracking-widest mb-1 opacity-50'
+  const title = 'text-[10px] font-mono uppercase tracking-widest mb-2 opacity-75'
 
   return (
     <div className="flex">
       {/* Top CPU */}
       <div className={col} style={{ borderRight: '1px solid hsl(var(--border) / 0.3)' }}>
-        <div className={title}>Top CPU</div>
+        <div className={title}>TOP CPU</div>
         {topCpu.map((n, i) => {
           const v = n.dynamic!.cpu_usage!
           const c = v >= 85 ? C_BAD : v >= 65 ? C_WARN : C_OK
@@ -287,7 +309,7 @@ function TopRanking({ nodes, onSelect }: { nodes: Node[]; onSelect: (uuid: strin
 
       {/* Top Memory */}
       <div className={col} style={{ borderRight: '1px solid hsl(var(--border) / 0.3)' }}>
-        <div className={title}>Top Mem</div>
+        <div className={title}>TOP MEM</div>
         {topMem.map((n, i) => {
           const v = n.dynamic!.used_memory! / n.dynamic!.total_memory! * 100
           const c = v >= 85 ? C_BAD : v >= 65 ? C_WARN : C_OK
@@ -295,9 +317,9 @@ function TopRanking({ nodes, onSelect }: { nodes: Node[]; onSelect: (uuid: strin
         })}
       </div>
 
-      {/* Top Traffic */}
+      {/* TOP SPEED */}
       <div className={col}>
-        <div className={title}>Top Traffic</div>
+        <div className={title}>TOP SPEED</div>
         {topTraffic.map((n, i) => {
           const rx = n.dynamic!.receive_speed ?? 0
           const tx = n.dynamic!.transmit_speed ?? 0
@@ -336,12 +358,10 @@ function StatusCounts({
   nodes,
   statusFilter,
   onStatusFilter,
-  onlineViewers,
 }: {
   nodes: Node[]
   statusFilter: StatusKey | null
   onStatusFilter: (s: StatusKey) => void
-  onlineViewers?: number | null
 }) {
   const counts = {
     ok:    nodes.filter(n => nodeStatus(n) === 'ok').length,
@@ -350,9 +370,9 @@ function StatusCounts({
   }
 
   const rows: { key: StatusKey; label: string; color: string }[] = [
-    { key: 'ok',    label: 'Operational', color: 'hsl(142 71% 45%)' },
-    { key: 'warn',  label: 'Alert',        color: C_WARN },
-    { key: 'alert', label: 'Offline/Halt', color: C_BAD },
+    { key: 'ok',    label: '正常',   color: 'hsl(142 71% 45%)' },
+    { key: 'warn',  label: '告警',   color: C_WARN },
+    { key: 'alert', label: '离线',   color: C_BAD },
   ]
 
   return (
@@ -368,16 +388,6 @@ function StatusCounts({
         flexShrink: 0,
       }}
     >
-      {onlineViewers != null && (
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, padding: '2px 0 4px' }}>
-          <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 700, fontSize: 20, lineHeight: 1, color: 'hsl(142 71% 45%)' }}>
-            {onlineViewers}
-          </span>
-          <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 10, letterSpacing: '0.18em', color: 'hsl(var(--muted-foreground))', textTransform: 'uppercase' }}>
-            Online
-          </span>
-        </div>
-      )}
       {rows.map(({ key, label, color }) => {
         const active = statusFilter === key
         return (
@@ -534,7 +544,7 @@ function MiniWorldMap({
 
 export function App() {
   const { config, error: configError } = useConfig()
-  const { nodes, errors, loading, onlineViewers, fetchNodeTcpHistory, fetchUptimeHistory, prefetchAllHistory } = useNodes(config)
+  const { nodes, errors, loading, onlineViewers, fetchNodeTcpHistory, fetchUptimeHistory } = useNodes(config)
   const deferredNodes = useDeferredValue(nodes)
   const navigate = useNavigate()
 
@@ -550,13 +560,6 @@ export function App() {
     return () => ro.disconnect()
   }, [])
 
-  const prefetchedRef = useRef(false)
-  useEffect(() => {
-    if (prefetchedRef.current) return
-    if (nodes.size === 0) return
-    prefetchedRef.current = true
-    prefetchAllHistory([...nodes.keys()], 30)
-  }, [nodes, prefetchAllHistory])
 
   const [query, setQuery] = useState('')
   const [activeRegion, setActiveRegion] = useState<string | null>(null)
@@ -672,6 +675,7 @@ export function App() {
               showSource={(config.site_tokens?.length ?? 0) > 1}
               fetchTcpHistory={fetchNodeTcpHistory}
               fetchUptimeHistory={fetchUptimeHistory}
+              onlineViewers={onlineViewers}
             />
           }
         />
@@ -694,6 +698,7 @@ export function App() {
                 alertCount={alertCount}
                 alertOnly={alertOnly}
                 query={query}
+                onlineViewers={onlineViewers}
                 onRegionChange={r => setActiveRegion(r)}
                 onAlertToggle={() => setAlertOnly(v => !v)}
                 onQueryChange={setQuery}
@@ -729,7 +734,6 @@ export function App() {
                             nodes={allNodes}
                             statusFilter={statusFilter}
                             onStatusFilter={s => setStatusFilter(prev => prev === s ? null : s)}
-                            onlineViewers={onlineViewers}
                           />
                           <div className="min-w-0 overflow-hidden">
                             <TrafficSparkline nodes={allNodes} />
@@ -818,11 +822,12 @@ function MapRoute({ nodes, onSelect, onClose }: {
   )
 }
 
-function NodeDetailRoute({ nodes, showSource, fetchTcpHistory, fetchUptimeHistory }: {
+function NodeDetailRoute({ nodes, showSource, fetchTcpHistory, fetchUptimeHistory, onlineViewers }: {
   nodes: Map<string, Node>
   showSource: boolean
   fetchTcpHistory: (uuid: string) => Promise<TcpPingRecord[]>
   fetchUptimeHistory: (uuid: string) => Promise<HistorySample[]>
+  onlineViewers: number | null
 }) {
   const { uuid } = useParams<{ uuid: string }>()
   const navigate = useNavigate()
@@ -834,6 +839,7 @@ function NodeDetailRoute({ nodes, showSource, fetchTcpHistory, fetchUptimeHistor
       showSource={showSource}
       fetchTcpHistory={fetchTcpHistory}
       fetchUptimeHistory={fetchUptimeHistory}
+      onlineViewers={onlineViewers}
     />
   )
 }

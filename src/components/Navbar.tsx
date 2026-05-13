@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Menu, Moon, Search as SearchIcon, Sun } from 'lucide-react'
 import { useTheme } from '../hooks/useTheme'
 import { Flag } from './Flag'
@@ -13,15 +13,12 @@ interface Props {
   alertCount?: number
   alertOnly?: boolean
   query?: string
+  onlineViewers?: number | null
   onRegionChange?: (r: string | null) => void
   onAlertToggle?: () => void
   onQueryChange?: (q: string) => void
   onMenuOpen?: () => void
   onHome?: () => void
-}
-
-function pad(n: number) {
-  return n.toString().padStart(2, '0')
 }
 
 export function Navbar({
@@ -33,6 +30,7 @@ export function Navbar({
   alertCount = 0,
   alertOnly = false,
   query = '',
+  onlineViewers,
   onRegionChange,
   onAlertToggle,
   onQueryChange,
@@ -41,13 +39,6 @@ export function Navbar({
 }: Props) {
   const { theme, toggle } = useTheme()
   const isDark = theme === 'dark'
-
-  const [now, setNow] = useState(() => new Date())
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000)
-    return () => clearInterval(id)
-  }, [])
-  const clock = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
 
   const divider = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'
   const pillBase: React.CSSProperties = {
@@ -116,14 +107,12 @@ export function Navbar({
           className="flex items-center gap-2 shrink-0"
         >
           {logo && (
-            <img src={logo} alt="" className="w-5 h-5 rounded-full object-cover" />
+            <img
+              src={logo}
+              alt=""
+              style={{ height: 28, width: 'auto', filter: isDark ? 'invert(1)' : 'none' }}
+            />
           )}
-          <span
-            className="text-xs font-bold tracking-[0.22em] uppercase"
-            style={{ color: 'hsl(var(--nx-text-primary))' }}
-          >
-            {siteName}
-          </span>
         </a>
       </div>
 
@@ -162,7 +151,7 @@ export function Navbar({
           style={!activeRegion && !alertOnly ? pillActive : pillInactive}
           onClick={() => { onRegionChange?.(null) }}
         >
-          All
+          全部
         </button>
 
         {/* Region pills */}
@@ -186,26 +175,34 @@ export function Navbar({
             style={alertOnly ? pillActive : { ...pillInactive, borderColor: 'hsl(0 80% 55% / 0.4)', color: 'hsl(0 80% 55%)' }}
             onClick={onAlertToggle}
           >
-            ⚠ Alert
+            ⚠ 告警
             <span style={{ opacity: 0.6 }}>{alertCount}</span>
           </button>
         )}
       </div>
 
-      {/* 右：时钟 + 主题切换 */}
+      {/* 右：在线人数 + 时钟 + 主题切换 */}
       <div
         className="flex items-center gap-3 px-3 shrink-0 border-l"
         style={{ borderColor: divider }}
       >
-        <span
-          className="hidden sm:inline-flex items-center gap-1.5 text-[10px] font-bold font-mono tracking-[0.16em]"
-          style={{ color: 'hsl(var(--nx-text-secondary))' }}
-        >
-          <span className="opacity-50 uppercase">Local</span>
-          <span className="tabular-nums" style={{ color: 'hsl(var(--nx-text-primary))' }}>
-            {clock}
+        {onlineViewers != null && onlineViewers > 0 && (
+          <span
+            className="hidden sm:inline-flex items-center gap-1.5 text-[10px] font-mono tracking-[0.12em]"
+            style={{ color: 'hsl(142 71% 45%)', flexShrink: 0 }}
+          >
+            <span
+              style={{
+                display: 'inline-block', width: 5, height: 5, borderRadius: '50%',
+                background: 'hsl(142 71% 45%)',
+                boxShadow: '0 0 5px hsl(142 71% 45%)',
+                animation: 'live-pulse-wl 1.4s ease-in-out infinite',
+              }}
+            />
+            <span style={{ fontWeight: 700 }}>{onlineViewers}</span>
+            <span style={{ opacity: 0.75 }}>人围观</span>
           </span>
-        </span>
+        )}
         <button
           type="button"
           onClick={toggle}

@@ -209,6 +209,11 @@
   100% { transform: scale(2.5); opacity: 0; }
 }
 
+@keyframes live-pulse-wl {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+
 .num-flash { animation: num-in 0.2s ease-out; }
 
 /* ===== 背景 ===== */
