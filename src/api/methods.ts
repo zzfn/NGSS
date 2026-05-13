@@ -22,6 +22,16 @@ export const listAgentUuids = (c: RpcClient) =>
 export const activeConnections = (c: RpcClient) =>
   c.call<number>('nodeget-server_active_connections', {}).then(r => r ?? 0)
 
+export const subscribeViewerCount = (
+  c: RpcClient,
+  handler: (count: number) => void,
+): Promise<() => Promise<void>> =>
+  c.subscribe<number>(
+    'nodeget-server_subscribe_viewer_count',
+    'nodeget-server_unsubscribe_viewer_count',
+    handler,
+  )
+
 export const staticDataMulti = (c: RpcClient, uuids: string[], fields: string[]) =>
   c.call<StaticData[]>('agent_static_data_multi_last_query', { uuids, fields })
 
