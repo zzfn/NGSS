@@ -49,6 +49,8 @@ const META_KEYS = [
 ]
 const DYN_INTERVAL_MS = 2000
 const HISTORY_LIMIT = 120
+// WebSocket 推送批处理窗口：同 uuid 在该窗口内的多次推送合并为一次 React 更新
+const DYNAMIC_FLUSH_MS = 200
 const TCP_PING_INTERVAL_MS = 30_000
 const TCP_PING_WINDOW_MS = 3 * 3600_000  // 每次查最近 3 小时
 const TCP_PING_MAX = 2000                 // 每节点最多保留 2000 条（20s/条 × 3运营商 × 3h ≈ 1620）
@@ -152,7 +154,9 @@ export function useNodes(config: SiteConfig | null) {
             const uuids = sourceUuids.get(entry.name) || []
             if (!uuids.length) return
 
-            const kvItems = uuids.flatMap(u => META_KEYS.map(k => ({ namespace: u, key: k })))
+            // 用通配符替代 N × 8 平铺：请求体降 8 倍，后端权限检查次数同步降低
+            // 后端会展开返回每个匹配的 key（与逐 key 查询的响应格式一致）
+            const kvItems = uuids.map(u => ({ namespace: u, key: 'metadata_*' }))
             const [meta, stat] = await Promise.allSettled([
               kvGetMulti(entry.client, kvItems),
               staticDataMulti(entry.client, uuids, STATIC_FIELDS),
@@ -190,9 +194,9 @@ export function useNodes(config: SiteConfig | null) {
 
         bootstrapTcpPing().catch(() => {})
 
-        // 预加载历史波形（30分钟）
+        // 预加载历史波形：窗口对齐 HISTORY_LIMIT × DYN_INTERVAL_MS，避免拉了大量数据后被 slice 丢弃
         const now = Date.now()
-        const from = now - 30 * 60_000
+        const from = now - HISTORY_LIMIT * DYN_INTERVAL_MS
         await Promise.allSettled(
           pool.entries.map(async entry => {
             const uuids = sourceUuids.get(entry.name) || []
@@ -268,23 +272,49 @@ export function useNodes(config: SiteConfig | null) {
       })
     }
 
-    // WebSocket 推送事件处理器：每条推送更新 liveRef 并触发 React 重渲染
-    const handleDynamicEvent = (event: DynamicSummaryEvent) => {
-      liveRef.current.set(event.uuid, event)
+    // WebSocket 推送批处理：避免高频 setLiveVer 触发 nodes useMemo 全量重算
+    // 用 Map 自动按 uuid 去重，窗口内多次推送只保留最新一条（动态数据是状态而非事件流，旧值可丢弃）
+    let pendingEvents = new Map<string, DynamicSummaryEvent>()
+    let flushTimer: ReturnType<typeof setTimeout> | null = null
+
+    const flushPendingEvents = () => {
+      flushTimer = null
+      if (!pendingEvents.size) return
+      const batch = pendingEvents
+      pendingEvents = new Map()
+
+      for (const [uuid, ev] of batch) liveRef.current.set(uuid, ev)
+
       startTransition(() => {
         setLiveVer(v => v + 1)
         setHistory(prev => {
-          const arr = prev.get(event.uuid) || []
-          const sample = sampleFrom(event)
-          // 时间戳相同说明数据未更新，跳过
-          if (arr.length && arr[arr.length - 1].t === sample.t) return prev
-          const next = new Map(prev)  // 懒克隆：每个事件只影响一个 uuid
-          const newArr = arr.length >= HISTORY_LIMIT ? arr.slice(1) : arr.slice()
-          newArr.push(sample)
-          next.set(event.uuid, newArr)
-          return next
+          let next: Map<string, HistorySample[]> | null = null
+          for (const [uuid, ev] of batch) {
+            const arr = prev.get(uuid) || []
+            const sample = sampleFrom(ev)
+            // 时间戳相同说明数据未更新，跳过
+            if (arr.length && arr[arr.length - 1].t === sample.t) continue
+            if (!next) next = new Map(prev)
+            const newArr = arr.length >= HISTORY_LIMIT ? arr.slice(1) : arr.slice()
+            newArr.push(sample)
+            next.set(uuid, newArr)
+          }
+          return next ?? prev
         })
       })
+    }
+
+    const handleDynamicEvent = (event: DynamicSummaryEvent & { time?: number }) => {
+      // 后端 WebSocket 推送字段名是 `time`，DB 查询返回的是 `timestamp`，统一对齐到 `timestamp`
+      // 否则 isOnline(dyn.timestamp) 拿到 undefined，节点会被首次推送翻成离线
+      const normalized: DynamicSummaryEvent =
+        event.timestamp != null
+          ? event
+          : { ...event, timestamp: event.time as number }
+      pendingEvents.set(normalized.uuid, normalized)
+      if (flushTimer == null) {
+        flushTimer = setTimeout(flushPendingEvents, DYNAMIC_FLUSH_MS)
+      }
     }
 
     // 将按 uuid 分组的 records 写入 tcpPingMap
@@ -415,6 +445,8 @@ export function useNodes(config: SiteConfig | null) {
       ac.abort()
       clearInterval(clockTimer)
       clearInterval(viewersTimer)
+      // 卸载时丢弃未 flush 的推送（pendingEvents 随闭包 GC）
+      if (flushTimer != null) clearTimeout(flushTimer)
       // 取消所有 WebSocket 动态摘要订阅
       for (const unsub of unsubscribeFns) {
         unsub().catch(e => console.warn('[useNodes] unsubscribe 失败:', e))
