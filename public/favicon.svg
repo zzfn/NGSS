@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- 白底 -->
+  <rect width="64" height="64" rx="12" fill="#ffffff"/>
+
+  <!-- 大 O：粗描边环，左侧偏上 -->
+  <circle cx="26" cy="26" r="15" fill="none" stroke="#0E0E10" stroke-width="6"/>
+
+  <!-- 小 o：实心小圆，右下角 -->
+  <circle cx="47" cy="47" r="9" fill="#0E0E10"/>
+
+  <!-- 连接感：一条细线从大O右下到小o左上 -->
+  <line x1="37" y1="37" x2="40" y2="40" stroke="#0E0E10" stroke-width="3" stroke-linecap="round"/>
+</svg>

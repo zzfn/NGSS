@@ -1,15 +1,10 @@
 {
-  "site_name": "WYNN",
-  "site_logo": "",
+  "site_name": "ONOO",
+  "site_logo": "/onoo-logo-dark.svg",
   "footer": "Powered by NodeGet",
   "site_tokens": [
     {
-      "name": "WYNN",
-      "backend_url": "wss://api.wwm.app",
-      "token": "2yppNqnebcoFBdIv:MfpPajwLTyfNys6ubqwlvn5Jnv12N3gO"
-    },
-    {
-      "name": "WYNN1",
+      "name": "Northflank",
       "backend_url": "wss://p01--nodeget--bkr4xfb9pfzy.code.run",
       "token": "B8YesbZ6YfEbadrA:vJm5sbpNAX0gkXC3HhJOM6rXj9dH5Pm5"
     }
