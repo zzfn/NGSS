@@ -600,7 +600,7 @@ function MiniWorldMap({
 export function App() {
   const isMobile = useIsMobile()
   const { config, error: configError } = useConfig()
-  const { nodes, errors, loading, onlineViewers, fetchNodeTcpHistory, fetchUptimeHistory, fetchIncidentHistory } = useNodes(config)
+  const { nodes, errors, loading, onlineViewers, visitorStats, fetchNodeTcpHistory, fetchUptimeHistory, fetchIncidentHistory } = useNodes(config)
   const deferredNodes = useDeferredValue(nodes)
   const navigate = useNavigate()
 
@@ -756,6 +756,7 @@ export function App() {
                 alertOnly={alertOnly}
                 query={query}
                 onlineViewers={onlineViewers}
+                visitorStats={visitorStats}
                 onRegionChange={r => setActiveRegion(r)}
                 onAlertToggle={() => setAlertOnly(v => !v)}
                 onQueryChange={setQuery}

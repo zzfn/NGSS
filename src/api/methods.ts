@@ -79,6 +79,24 @@ export const querySummaryBuckets = (
   query: { uuid: string; from: number; to: number; buckets: number; fields: string[] },
 ) => c.call<SummaryBucket[]>('agent_query_dynamic_summary_buckets', { query })
 
+export interface VisitorStats {
+  today_rank: number
+  today_total: number
+  all_time_total: number
+  yesterday_total: number
+}
+
+export async function fetchVisitorStats(backendUrl: string): Promise<VisitorStats | null> {
+  try {
+    const httpUrl = backendUrl.replace(/^wss:\/\//, 'https://').replace(/^ws:\/\//, 'http://')
+    const r = await fetch(`${httpUrl}/nodeget/visitor-stats`)
+    if (!r.ok) return null
+    return r.json()
+  } catch {
+    return null
+  }
+}
+
 export const kvGetMulti = (
   c: RpcClient,
   items: { namespace: string; key: string }[],

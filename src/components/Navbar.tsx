@@ -3,6 +3,7 @@ import { MapPin, Menu, Moon, Search as SearchIcon, Sun } from 'lucide-react'
 import { useTheme } from '../hooks/useTheme'
 import { Flag } from './Flag'
 import { cn } from '../utils/cn'
+import type { VisitorStats } from '../api/methods'
 
 interface Props {
   siteName: string
@@ -14,6 +15,7 @@ interface Props {
   alertOnly?: boolean
   query?: string
   onlineViewers?: number | null
+  visitorStats?: VisitorStats | null
   onRegionChange?: (r: string | null) => void
   onAlertToggle?: () => void
   onQueryChange?: (q: string) => void
@@ -31,6 +33,7 @@ export function Navbar({
   alertOnly = false,
   query = '',
   onlineViewers,
+  visitorStats,
   onRegionChange,
   onAlertToggle,
   onQueryChange,
@@ -247,6 +250,19 @@ export function Navbar({
             />
             <span style={{ fontWeight: 800, fontSize: 15, lineHeight: 1 }}>{onlineViewers}</span>
             <span style={{ opacity: 0.7, fontSize: 11 }}>人围观</span>
+          </span>
+        )}
+        {visitorStats != null && (
+          <span
+            className="hidden sm:inline-flex items-center gap-1 font-mono"
+            style={{ color: 'hsl(var(--muted-foreground))', flexShrink: 0, fontSize: 11, letterSpacing: '0.06em' }}
+          >
+            <span style={{ opacity: 0.55 }}>今日第</span>
+            <span style={{ color: 'hsl(var(--foreground))', fontWeight: 700 }}>{visitorStats.today_rank}</span>
+            <span style={{ opacity: 0.55 }}>位</span>
+            <span style={{ opacity: 0.3, margin: '0 2px' }}>·</span>
+            <span style={{ opacity: 0.55 }}>累计</span>
+            <span style={{ color: 'hsl(var(--foreground))', fontWeight: 700 }}>{visitorStats.all_time_total.toLocaleString()}</span>
           </span>
         )}
         <button
