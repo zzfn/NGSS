@@ -1,6 +1,6 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BackendPool } from '../api/pool'
-import { activeConnections, dynamicSummaryMulti, kvGetMulti, listAgentUuids, queryNodeTcpPings, queryTcpPings, queryTcpPingsLatest, querySummaryBuckets, querySummaryHistory, querySummaryHistoryMulti, staticDataMulti, subscribeDynamicSummary } from '../api/methods'
+import { dynamicSummaryMulti, kvGetMulti, listAgentUuids, queryNodeTcpPings, queryTcpPings, queryTcpPingsLatest, querySummaryBuckets, querySummaryHistory, querySummaryHistoryMulti, staticDataMulti, subscribeDynamicSummary, subscribeViewerCount } from '../api/methods'
 import type { DynamicSummaryEvent } from '../api/methods'
 import { isOnline } from '../utils/status'
 import type { DynamicSummary, HistorySample, Node, NodeMeta, SiteConfig, TcpPingRecord } from '../types'
@@ -304,14 +304,8 @@ export function useNodes(config: SiteConfig | null) {
       })
     }
 
-    const handleDynamicEvent = (event: DynamicSummaryEvent & { time?: number }) => {
-      // 后端 WebSocket 推送字段名是 `time`，DB 查询返回的是 `timestamp`，统一对齐到 `timestamp`
-      // 否则 isOnline(dyn.timestamp) 拿到 undefined，节点会被首次推送翻成离线
-      const normalized: DynamicSummaryEvent =
-        event.timestamp != null
-          ? event
-          : { ...event, timestamp: event.time as number }
-      pendingEvents.set(normalized.uuid, normalized)
+    const handleDynamicEvent = (event: DynamicSummaryEvent) => {
+      pendingEvents.set(event.uuid, event)
       if (flushTimer == null) {
         flushTimer = setTimeout(flushPendingEvents, DYNAMIC_FLUSH_MS)
       }
@@ -431,20 +425,15 @@ export function useNodes(config: SiteConfig | null) {
 
     const clockTimer = setInterval(() => setTick(t => t + 1), 5000)
 
-    const tickViewers = async () => {
-      try {
-        const total = await activeConnections(pool.entries[0].client)
-        const agentCount = agentsRef.current.size
-        setOnlineViewers(Math.max(0, total - agentCount))
-      } catch {}
-    }
-    tickViewers()
-    const viewersTimer = setInterval(tickViewers, 10_000)
+    subscribeViewerCount(pool.entries[0].client, count => {
+      setOnlineViewers(count)
+    })
+      .then(unsub => unsubscribeFns.push(unsub))
+      .catch(e => console.warn('[useNodes] subscribeViewerCount 失败:', e))
 
     return () => {
       ac.abort()
       clearInterval(clockTimer)
-      clearInterval(viewersTimer)
       // 卸载时丢弃未 flush 的推送（pendingEvents 随闭包 GC）
       if (flushTimer != null) clearTimeout(flushTimer)
       // 取消所有 WebSocket 动态摘要订阅
