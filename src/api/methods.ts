@@ -4,6 +4,9 @@ import type { DynamicSummary, StaticData } from '../types'
 export const listAgentUuids = (c: RpcClient) =>
   c.call<{ uuids?: string[] }>('nodeget-server_list_all_agent_uuid', {}).then(r => r?.uuids || [])
 
+export const activeConnections = (c: RpcClient) =>
+  c.call<number>('nodeget-server_active_connections', {}).then(r => r ?? 0)
+
 export const staticDataMulti = (c: RpcClient, uuids: string[], fields: string[]) =>
   c.call<StaticData[]>('agent_static_data_multi_last_query', { uuids, fields })
 

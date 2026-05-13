@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { deriveUsage } from '../utils/derive'
 import type { Node } from '../types'
 
-export function GlobalStatsBar({ nodes }: { nodes: Node[] }) {
+export function GlobalStatsBar({ nodes, onlineViewers }: { nodes: Node[]; onlineViewers?: number | null }) {
   const stats = useMemo(() => {
     if (!nodes.length) return null
     const total = nodes.length
@@ -34,6 +34,16 @@ export function GlobalStatsBar({ nodes }: { nodes: Node[] }) {
       </span>
 
       <span className="font-medium text-emerald-500">{stats.online} 在线</span>
+
+      {onlineViewers != null && (
+        <>
+          <div className="w-px h-3 shrink-0" style={{ background: 'hsl(var(--border))' }} />
+          <span>
+            <span className="font-semibold" style={{ color: 'hsl(var(--nx-text-primary))' }}>{onlineViewers}</span>
+            {' '}人在线
+          </span>
+        </>
+      )}
 
       {stats.offline > 0 && (
         <span className="font-medium text-red-500">{stats.offline} 离线</span>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useDeferredValue } from 'react'
+import { Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import { AnimatePresence } from 'motion/react'
 import { AlertTriangle, Map as MapIcon } from 'lucide-react'
 import { LoadingScreen } from './components/LoadingScreen'
@@ -15,13 +16,18 @@ import { NodeDetail } from './components/NodeDetail'
 import { NodeGrid } from './components/NodeGrid'
 import { deriveUsage } from './utils/derive'
 import { resolveCoords } from './utils/coords'
-import type { View, Node } from './types'
+import type { View, Node, TcpPingRecord, HistorySample } from './types'
 
 const DEFAULT_LOGO = `${import.meta.env.BASE_URL}logo.png`
 
 function initialView(): View {
   return 'cards'
 }
+
+// ── 主题色 ────────────────────────────────────────────────────────────────────
+const C_OK   = 'hsl(170 75% 52%)'  // 青绿主色（正常/在线）
+const C_WARN = 'hsl(45 90% 52%)'   // 琥珀（告警）
+const C_BAD  = 'hsl(0 72% 58%)'    // 红（危险/离线）
 
 // ── 聚合流量 Sparkline ────────────────────────────────────────────────────────
 function TrafficSparkline({ nodes }: { nodes: Node[] }) {
@@ -120,13 +126,13 @@ function TrafficSparkline({ nodes }: { nodes: Node[] }) {
             <>
               <path
                 d={`${inPath} L ${W - PAD.r} ${H - PAD.b} L ${PAD.l} ${H - PAD.b} Z`}
-                fill="hsl(142 71% 45%)"
+                fill={C_OK}
                 opacity={0.1}
               />
               <path
                 d={inPath}
                 fill="none"
-                stroke="hsl(142 71% 45%)"
+                stroke={C_OK}
                 strokeWidth={1.4}
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -147,8 +153,7 @@ function TrafficSparkline({ nodes }: { nodes: Node[] }) {
                 strokeWidth={1.1}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeDasharray="3 3"
-                opacity={0.7}
+                opacity={0.75}
               />
             </>
           )}
@@ -161,7 +166,7 @@ function TrafficSparkline({ nodes }: { nodes: Node[] }) {
                 stroke="white" strokeWidth={0.6} opacity={0.3}
               />
               {hoverInY !== null && (
-                <circle cx={hoverX} cy={hoverInY} r={2.5} fill="hsl(142 71% 45%)" />
+                <circle cx={hoverX} cy={hoverInY} r={2.5} fill={C_OK} />
               )}
               {hoverOutY !== null && (
                 <circle cx={hoverX} cy={hoverOutY} r={2} fill="hsl(217 91% 60%)" />
@@ -177,7 +182,7 @@ function TrafficSparkline({ nodes }: { nodes: Node[] }) {
           className="pointer-events-none fixed z-50 rounded-md border bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-md font-mono"
           style={{ left: mousePos.x + 14, top: mousePos.y - 40 }}
         >
-          <div style={{ color: 'hsl(142 71% 45%)' }}>↓ {fmtSpeed(ins[hoverIdx])}/s</div>
+          <div style={{ color: C_OK }}>↓ {fmtSpeed(ins[hoverIdx])}/s</div>
           <div style={{ color: 'hsl(217 91% 60%)' }}>↑ {fmtSpeed(outs[hoverIdx])}/s</div>
           <div className="mt-0.5 text-muted-foreground text-[10px]">
             {new Date(keys[hoverIdx]).toLocaleTimeString()}
@@ -222,70 +227,92 @@ function TopRanking({ nodes, onSelect }: { nodes: Node[]; onSelect: (uuid: strin
     })
     .slice(0, 5)
 
-  function valueColor(pct: number) {
-    if (pct >= 85) return 'hsl(0 80% 60%)'
-    if (pct >= 65) return 'hsl(45 90% 55%)'
-    return 'hsl(var(--muted-foreground))'
+  if (online.length === 0) return null
+
+  const maxCpu = topCpu[0]?.dynamic?.cpu_usage ?? 1
+  const maxMem = topMem[0] ? topMem[0].dynamic!.used_memory! / topMem[0].dynamic!.total_memory! : 1
+  const maxTx  = topTraffic[0] ? (topTraffic[0].dynamic!.receive_speed ?? 0) + (topTraffic[0].dynamic!.transmit_speed ?? 0) : 1
+
+  function RankRow({ label, value, valueStr, color, max, rank, onClick }: {
+    label: string; value: number; valueStr: string; color: string; max: number; rank: number; onClick: () => void
+  }) {
+    const barW = max > 0 ? Math.max(2, (value / max) * 100) : 0
+    const alpha = 1 - rank * 0.13
+    return (
+      <div
+        onClick={onClick}
+        style={{ position: 'relative', padding: '3px 4px 5px', cursor: 'pointer', borderRadius: 3 }}
+        className="group"
+      >
+        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity rounded"
+          style={{ background: 'hsl(var(--muted) / 0.4)' }} />
+        {/* label + value */}
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 3 }}>
+          <span className="truncate text-xs" style={{ color: 'hsl(var(--foreground))', opacity: alpha * 0.85 }}>{label}</span>
+          <span className="font-mono tabular-nums text-xs shrink-0" style={{ color, opacity: alpha }}>{valueStr}</span>
+        </div>
+        {/* 斜纹进度条 */}
+        <div style={{
+          position: 'relative', height: 4,
+          border: '1px solid hsl(var(--border) / 0.7)',
+          borderRadius: 2,
+          background: 'hsl(var(--secondary) / 0.5)',
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            position: 'absolute', inset: 0, width: `${barW}%`,
+            backgroundImage: `repeating-linear-gradient(45deg, ${color} 0 3px, transparent 3px 6px)`,
+            opacity: 0.6,
+            transition: 'width 0.5s ease',
+          }} />
+        </div>
+      </div>
+    )
   }
 
   const col = 'flex-1 min-w-0 px-3 py-2'
-  const title = 'text-[9px] font-mono uppercase tracking-widest mb-1.5'
-  const row = 'flex items-center justify-between gap-2 py-0.5 text-xs cursor-pointer hover:text-foreground transition-colors'
-  const name = 'truncate flex-1 min-w-0'
-
-  if (online.length === 0) return null
+  const title = 'text-[9px] font-mono uppercase tracking-widest mb-1 opacity-50'
 
   return (
-    <div
-      className="flex"
-      style={{
-        background: 'hsl(var(--card) / 0.5)',
-        borderBottom: '1px solid hsl(var(--border) / 0.4)',
-      }}
-    >
+    <div className="flex">
       {/* Top CPU */}
       <div className={col} style={{ borderRight: '1px solid hsl(var(--border) / 0.3)' }}>
-        <div className={title} style={{ color: 'hsl(var(--muted-foreground))' }}>Top CPU</div>
-        {topCpu.map(n => {
-          const pct = n.dynamic!.cpu_usage!
-          return (
-            <div key={n.uuid} className={row} style={{ color: 'hsl(var(--muted-foreground))' }} onClick={() => onSelect(n.uuid)}>
-              <span className={name}>{n.meta?.name || n.uuid.slice(0, 8)}</span>
-              <span className="font-mono tabular-nums shrink-0" style={{ color: valueColor(pct) }}>{pct.toFixed(1)}%</span>
-            </div>
-          )
+        <div className={title}>Top CPU</div>
+        {topCpu.map((n, i) => {
+          const v = n.dynamic!.cpu_usage!
+          const c = v >= 85 ? C_BAD : v >= 65 ? C_WARN : C_OK
+          return <RankRow key={n.uuid} label={n.meta?.name || n.uuid.slice(0, 8)} value={v} valueStr={`${v.toFixed(1)}%`} color={c} max={maxCpu} rank={i} onClick={() => onSelect(n.uuid)} />
         })}
       </div>
 
       {/* Top Memory */}
       <div className={col} style={{ borderRight: '1px solid hsl(var(--border) / 0.3)' }}>
-        <div className={title} style={{ color: 'hsl(var(--muted-foreground))' }}>Top Mem</div>
-        {topMem.map(n => {
-          const pct = n.dynamic!.used_memory! / n.dynamic!.total_memory! * 100
-          return (
-            <div key={n.uuid} className={row} style={{ color: 'hsl(var(--muted-foreground))' }} onClick={() => onSelect(n.uuid)}>
-              <span className={name}>{n.meta?.name || n.uuid.slice(0, 8)}</span>
-              <span className="font-mono tabular-nums shrink-0" style={{ color: valueColor(pct) }}>{pct.toFixed(1)}%</span>
-            </div>
-          )
+        <div className={title}>Top Mem</div>
+        {topMem.map((n, i) => {
+          const v = n.dynamic!.used_memory! / n.dynamic!.total_memory! * 100
+          const c = v >= 85 ? C_BAD : v >= 65 ? C_WARN : C_OK
+          return <RankRow key={n.uuid} label={n.meta?.name || n.uuid.slice(0, 8)} value={v} valueStr={`${v.toFixed(1)}%`} color={c} max={maxMem * 100} rank={i} onClick={() => onSelect(n.uuid)} />
         })}
       </div>
 
       {/* Top Traffic */}
       <div className={col}>
-        <div className={title} style={{ color: 'hsl(var(--muted-foreground))' }}>Top Traffic</div>
-        {topTraffic.map(n => {
+        <div className={title}>Top Traffic</div>
+        {topTraffic.map((n, i) => {
           const rx = n.dynamic!.receive_speed ?? 0
           const tx = n.dynamic!.transmit_speed ?? 0
+          const total = rx + tx
           return (
-            <div key={n.uuid} className={row} style={{ color: 'hsl(var(--muted-foreground))' }} onClick={() => onSelect(n.uuid)}>
-              <span className={name}>{n.meta?.name || n.uuid.slice(0, 8)}</span>
-              <span className="font-mono tabular-nums shrink-0 text-[11px]">
-                <span style={{ color: 'hsl(142 71% 45%)' }}>↓{fmtSpeed(rx)}</span>
-                <span className="opacity-40 mx-0.5">/</span>
-                <span style={{ color: 'hsl(217 91% 60%)' }}>↑{fmtSpeed(tx)}</span>
-              </span>
-            </div>
+            <RankRow
+              key={n.uuid}
+              label={n.meta?.name || n.uuid.slice(0, 8)}
+              value={total}
+              valueStr={`↓${fmtSpeed(rx)} ↑${fmtSpeed(tx)}`}
+              color={C_OK}
+              max={maxTx}
+              rank={i}
+              onClick={() => onSelect(n.uuid)}
+            />
           )
         })}
       </div>
@@ -297,19 +324,38 @@ function TopRanking({ nodes, onSelect }: { nodes: Node[]; onSelect: (uuid: strin
 function nodeStatus(n: Node): 'ok' | 'warn' | 'alert' {
   if (!n.online) return 'alert'
   const u = deriveUsage(n)
-  if ((u.cpu ?? 0) >= 85 || (u.mem ?? 0) >= 95 || (u.disk ?? 0) >= 90) return 'alert'
-  if ((u.cpu ?? 0) >= 65 || (u.mem ?? 0) >= 80 || (u.disk ?? 0) >= 80) return 'warn'
+  if ((u.cpu ?? 0) >= 80 || (u.mem ?? 0) >= 85 || (u.disk ?? 0) >= 85) return 'alert'
+  if ((u.cpu ?? 0) >= 60 || (u.mem ?? 0) >= 70 || (u.disk ?? 0) >= 70) return 'warn'
   return 'ok'
 }
 
 // ── 状态计数组件 ─────────────────────────────────────────────────────────────
-function StatusCounts({ nodes }: { nodes: Node[] }) {
-  const ok    = nodes.filter(n => nodeStatus(n) === 'ok').length
-  const warn  = nodes.filter(n => nodeStatus(n) === 'warn').length
-  const alert = nodes.filter(n => nodeStatus(n) === 'alert').length
+type StatusKey = 'ok' | 'warn' | 'alert'
+
+function StatusCounts({
+  nodes,
+  statusFilter,
+  onStatusFilter,
+  onlineViewers,
+}: {
+  nodes: Node[]
+  statusFilter: StatusKey | null
+  onStatusFilter: (s: StatusKey) => void
+  onlineViewers?: number | null
+}) {
+  const counts = {
+    ok:    nodes.filter(n => nodeStatus(n) === 'ok').length,
+    warn:  nodes.filter(n => nodeStatus(n) === 'warn').length,
+    alert: nodes.filter(n => nodeStatus(n) === 'alert').length,
+  }
+
+  const rows: { key: StatusKey; label: string; color: string }[] = [
+    { key: 'ok',    label: 'Operational', color: 'hsl(142 71% 45%)' },
+    { key: 'warn',  label: 'Alert',        color: C_WARN },
+    { key: 'alert', label: 'Offline/Halt', color: C_BAD },
+  ]
 
   return (
-    // wireframe: .counts { padding:10px 14px; display:flex; flex-direction:column; gap:4px; min-width:180px }
     <div
       style={{
         borderRight: '1px solid hsl(var(--border) / 0.5)',
@@ -317,60 +363,73 @@ function StatusCounts({ nodes }: { nodes: Node[] }) {
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'center',
-        gap: 4,
-        padding: '10px 14px',
+        gap: 2,
+        padding: '8px 10px',
         flexShrink: 0,
       }}
     >
-      {([
-        { n: ok,    label: 'Operational', color: 'hsl(142 71% 45%)' },
-        { n: warn,  label: 'Alert',        color: 'hsl(45 90% 55%)' },
-        { n: alert, label: 'Offline/Halt', color: 'hsl(0 80% 55%)' },
-      ] as const).map(({ n, label, color }) => (
-        // wireframe: .count { grid-template-columns: 11px auto 1fr; gap: 10px }
-        <div
-          key={label}
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '11px auto 1fr',
-            gap: 10,
-            alignItems: 'center',
-          }}
-        >
-          {/* wireframe: .count .dot { width:11px; height:11px; border-radius:50% } */}
-          <span
-            style={{
-              width: 11, height: 11, borderRadius: '50%',
-              background: color, flexShrink: 0,
-            }}
-          />
-          {/* wireframe: .count .n { font-family:'Caveat'; font-size:28px; font-weight:700 } */}
-          <span
-            style={{
-              fontFamily: 'ui-monospace, monospace',
-              fontWeight: 700,
-              fontSize: 28,
-              lineHeight: 1,
-              color: 'hsl(var(--foreground))',
-            }}
-          >
-            {n}
+      {onlineViewers != null && (
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, padding: '2px 0 4px' }}>
+          <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 700, fontSize: 20, lineHeight: 1, color: 'hsl(142 71% 45%)' }}>
+            {onlineViewers}
           </span>
-          {/* wireframe: .count .l { font-size:10px; letter-spacing:.18em; text-align:right } */}
-          <span
-            style={{
-              fontFamily: 'ui-monospace, monospace',
-              fontSize: 10,
-              letterSpacing: '0.18em',
-              color: 'hsl(var(--muted-foreground))',
-              textTransform: 'uppercase',
-              textAlign: 'right',
-            }}
-          >
-            {label}
+          <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 10, letterSpacing: '0.18em', color: 'hsl(var(--muted-foreground))', textTransform: 'uppercase' }}>
+            Online
           </span>
         </div>
-      ))}
+      )}
+      {rows.map(({ key, label, color }) => {
+        const active = statusFilter === key
+        return (
+          <button
+            key={key}
+            type="button"
+            onClick={() => onStatusFilter(key)}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '11px auto 1fr',
+              gap: 10,
+              alignItems: 'center',
+              padding: '3px 6px',
+              margin: '0 -6px',
+              borderRadius: 4,
+              border: 'none',
+              cursor: 'pointer',
+              background: active ? `${color}22` : 'transparent',
+              outline: active ? `1px solid ${color}55` : '1px solid transparent',
+              transition: 'background 0.15s, outline-color 0.15s',
+              textAlign: 'left',
+            }}
+          >
+            <span style={{ width: 11, height: 11, borderRadius: '50%', background: color, flexShrink: 0 }} />
+            <span
+              style={{
+                fontFamily: 'ui-monospace, monospace',
+                fontWeight: 700,
+                fontSize: 28,
+                lineHeight: 1,
+                color: active ? color : 'hsl(var(--foreground))',
+                transition: 'color 0.15s',
+              }}
+            >
+              {counts[key]}
+            </span>
+            <span
+              style={{
+                fontFamily: 'ui-monospace, monospace',
+                fontSize: 10,
+                letterSpacing: '0.18em',
+                color: active ? color : 'hsl(var(--muted-foreground))',
+                textTransform: 'uppercase',
+                textAlign: 'right',
+                transition: 'color 0.15s',
+              }}
+            >
+              {label}
+            </span>
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -400,12 +459,7 @@ function MiniWorldMap({
         seen.set(key, {
           x,
           y,
-          color:
-            s === 'alert'
-              ? 'hsl(0 80% 55%)'
-              : s === 'warn'
-                ? 'hsl(45 90% 55%)'
-                : 'hsl(142 71% 45%)',
+          color: s === 'alert' ? C_BAD : s === 'warn' ? C_WARN : C_OK,
         })
       }
     }
@@ -423,24 +477,26 @@ function MiniWorldMap({
       }}
       title="打开世界地图"
     >
-      {/* 极简大陆轮廓 */}
+      {/* 大陆轮廓（等经纬度投影） */}
       <svg
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="xMidYMid meet"
         className="absolute inset-0 w-full h-full"
-        style={{ opacity: 0.25 }}
+        style={{ opacity: 0.22 }}
       >
-        <g fill="hsl(var(--foreground))" stroke="none">
-          {/* 亚洲 */}
-          <path d="M220 18 Q260 12 290 28 Q310 45 300 65 Q285 80 265 75 Q240 70 225 55 Q210 42 220 18 Z" />
-          {/* 欧洲 */}
-          <path d="M160 16 Q185 12 195 28 Q200 45 188 55 Q175 60 162 50 Q148 38 160 16 Z" />
+        <g fill="hsl(var(--foreground))" stroke="hsl(var(--foreground))" strokeWidth="0.4" strokeLinejoin="round">
           {/* 北美 */}
-          <path d="M45 18 Q90 10 110 35 Q120 58 105 72 Q85 78 65 70 Q40 58 35 38 Z" />
+          <polygon points="11,13 22,6 36,4 62,3 90,2 113,22 106,28 98,30 89,42 81,51 75,51 66,46 56,37 52,25 45,18 25,15" />
           {/* 南美 */}
-          <path d="M72 82 Q88 74 100 90 Q105 108 95 118 Q80 122 70 110 Q60 96 72 82 Z" />
+          <polygon points="87,49 107,48 118,55 130,58 128,69 120,76 114,88 106,95 99,101 93,88 89,74 87,62" />
+          {/* 欧洲 */}
+          <polygon points="149,35 154,30 163,30 170,29 185,30 191,29 188,25 185,18 187,8 182,4 169,13 162,18 155,26 149,35" />
           {/* 非洲 */}
-          <path d="M178 52 Q195 48 202 68 Q206 90 198 108 Q185 118 172 108 Q160 90 164 70 Z" />
+          <polygon points="145,47 153,29 169,29 188,35 198,50 196,67 191,77 184,85 176,85 171,79 168,59 156,59 147,58" />
+          {/* 亚洲（含中东/东南亚） */}
+          <polygon points="187,8 182,4 222,2 249,3 284,3 308,12 320,22 320,38 295,28 284,31 276,33 267,41 256,48 253,57 248,55 231,50 229,42 220,43 211,49 199,50 198,40 193,30 188,25 185,18 187,8" />
+          {/* 澳大利亚 */}
+          <polygon points="261,82 263,92 272,92 283,94 293,96 296,88 293,82 289,79 277,76 268,79" />
         </g>
       </svg>
 
@@ -478,8 +534,9 @@ function MiniWorldMap({
 
 export function App() {
   const { config, error: configError } = useConfig()
-  const { nodes, errors, loading, fetchNodeTcpHistory, fetchUptimeHistory, prefetchAllHistory } = useNodes(config)
+  const { nodes, errors, loading, onlineViewers, fetchNodeTcpHistory, fetchUptimeHistory, prefetchAllHistory } = useNodes(config)
   const deferredNodes = useDeferredValue(nodes)
+  const navigate = useNavigate()
 
   const topStickyRef = useRef<HTMLDivElement>(null)
   const [topH, setTopH] = useState(0)
@@ -501,11 +558,10 @@ export function App() {
     prefetchAllHistory([...nodes.keys()], 30)
   }, [nodes, prefetchAllHistory])
 
-  const [view, setView] = useState<View>(initialView)
   const [query, setQuery] = useState('')
   const [activeRegion, setActiveRegion] = useState<string | null>(null)
   const [alertOnly, setAlertOnly] = useState(false)
-  const [selected, setSelected] = useState<string | null>(null)
+  const [statusFilter, setStatusFilter] = useState<StatusKey | null>(null)
 
   useEffect(() => {
     if (config?.site_name) document.title = config.site_name
@@ -541,7 +597,7 @@ export function App() {
   )
 
   const list = useMemo(() => {
-    let arr = [...deferredNodes.values()].filter(n => !n.meta?.hidden)
+    let arr = [...nodes.values()].filter(n => !n.meta?.hidden)
 
     const q = query.trim().toLowerCase()
     if (q) {
@@ -568,6 +624,9 @@ export function App() {
     if (alertOnly) {
       arr = arr.filter(n => nodeStatus(n) !== 'ok')
     }
+    if (statusFilter) {
+      arr = arr.filter(n => nodeStatus(n) === statusFilter)
+    }
 
     return arr.sort((a, b) => {
       if (a.online !== b.online) return a.online ? -1 : 1
@@ -578,9 +637,7 @@ export function App() {
       const bn = b.meta?.name || b.uuid
       return an.localeCompare(bn)
     })
-  }, [deferredNodes, query, activeRegion, alertOnly])
-
-  const selectedNode = selected ? nodes.get(selected) || null : null
+  }, [nodes, query, activeRegion, alertOnly, statusFilter])
 
   if (configError) {
     return (
@@ -604,121 +661,179 @@ export function App() {
   const showLoading = loading && allNodes.length === 0
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <>
       <Background />
+      <Routes>
+        <Route
+          path="/node/:uuid"
+          element={
+            <NodeDetailRoute
+              nodes={nodes}
+              showSource={(config.site_tokens?.length ?? 0) > 1}
+              fetchTcpHistory={fetchNodeTcpHistory}
+              fetchUptimeHistory={fetchUptimeHistory}
+            />
+          }
+        />
+        <Route
+          path="/map"
+          element={
+            <MapRoute nodes={allNodes} onSelect={uuid => navigate('/node/' + uuid)} onClose={() => navigate('/')} />
+          }
+        />
+        <Route
+          path="*"
+          element={
+            <div className="min-h-screen flex flex-col">
+              <Navbar
+                siteName={config.site_name || '节点监控'}
+                logo={logo}
+                regions={allRegions}
+                regionCounts={regionCounts}
+                activeRegion={activeRegion}
+                alertCount={alertCount}
+                alertOnly={alertOnly}
+                query={query}
+                onRegionChange={r => setActiveRegion(r)}
+                onAlertToggle={() => setAlertOnly(v => !v)}
+                onQueryChange={setQuery}
+                onHome={() => {
+                  setActiveRegion(null)
+                  setAlertOnly(false)
+                  setStatusFilter(null)
+                  setQuery('')
+                  navigate('/')
+                }}
+              />
 
-      <Navbar
-        siteName={config.site_name || '节点监控'}
-        logo={logo}
-        regions={allRegions}
-        regionCounts={regionCounts}
-        activeRegion={activeRegion}
-        alertCount={alertCount}
-        alertOnly={alertOnly}
-        query={query}
-        onRegionChange={r => { setActiveRegion(r); setAlertOnly(false) }}
-        onAlertToggle={() => { setAlertOnly(v => !v); setActiveRegion(null) }}
-        onQueryChange={setQuery}
-        onHome={() => {
-          setActiveRegion(null)
-          setAlertOnly(false)
-          setQuery('')
-          setSelected(null)
-          setView('cards')
-        }}
-      />
+              <main className="flex-1 min-w-0 pt-11 pb-0">
 
-      <main className="flex-1 min-w-0 pt-11 pb-0">
+                <>
+                    {/* ── 粘性顶部区域：仅告警 ── */}
+                    <div ref={topStickyRef} className="sticky top-11 z-30 backdrop-blur-sm">
+                      {!showLoading && allNodes.length > 0 && (
+                        <AlertBanner nodes={allNodes} onSelect={uuid => navigate('/node/' + uuid)} />
+                      )}
+                    </div>
 
-        {/* 地图视图 */}
-        {view === 'map' && (
-          <div className="h-[calc(100vh-44px)]">
-            <WorldMap nodes={allNodes} onSelect={setSelected} />
-          </div>
-        )}
+                    {/* ── 非粘性汇总区域 ── */}
+                    {!showLoading && allNodes.length > 0 && (
+                      <div style={{ margin: '8px 12px 12px', border: '1px solid hsl(var(--border) / 0.55)', borderRadius: 6, overflow: 'hidden', background: 'hsl(var(--card) / 0.45)' }}>
+                        {/* 状态计数 | 流量图 | 迷你地图 */}
+                        <div style={{
+                          borderBottom: '1px solid hsl(var(--border) / 0.35)',
+                          display: 'grid',
+                          gridTemplateColumns: 'auto 2fr 1fr',
+                        }}>
+                          <StatusCounts
+                            nodes={allNodes}
+                            statusFilter={statusFilter}
+                            onStatusFilter={s => setStatusFilter(prev => prev === s ? null : s)}
+                            onlineViewers={onlineViewers}
+                          />
+                          <div className="min-w-0 overflow-hidden">
+                            <TrafficSparkline nodes={allNodes} />
+                          </div>
+                          <MiniWorldMap nodes={allNodes} onViewMap={() => navigate('/map')} />
+                        </div>
+                        {/* 排行榜 */}
+                        <TopRanking nodes={allNodes} onSelect={uuid => navigate('/node/' + uuid)} />
+                      </div>
+                    )}
 
-        {view !== 'map' && (
-          <>
-            {/* ── 粘性顶部区域：仅告警 ── */}
-            <div ref={topStickyRef} className="sticky top-11 z-30 backdrop-blur-sm">
-              {!showLoading && allNodes.length > 0 && (
-                <AlertBanner nodes={allNodes} onSelect={setSelected} />
-              )}
-            </div>
+                    {/* 加载态 */}
+                    <AnimatePresence>
+                      {showLoading && !hasErrors && <LoadingScreen key="loading" />}
+                    </AnimatePresence>
 
-            {/* ── 非粘性汇总区域 ── */}
-            {!showLoading && allNodes.length > 0 && (
-              <div style={{ borderBottom: '1px solid hsl(var(--border) / 0.4)' }}>
-                {/* 状态计数 | 流量图 | 迷你地图 */}
-                <div style={{
-                  background: 'hsl(var(--card) / 0.5)',
-                  borderBottom: '1px solid hsl(var(--border) / 0.3)',
-                  display: 'grid',
-                  gridTemplateColumns: 'auto 2fr 1fr',
-                }}>
-                  <StatusCounts nodes={allNodes} />
-                  <div className="min-w-0 overflow-hidden">
-                    <TrafficSparkline nodes={allNodes} />
+                    {!showLoading && allNodes.length > 0 && empty && (
+                      <div
+                        className="py-20 text-center text-sm"
+                        style={{ color: 'hsl(var(--muted-foreground))' }}
+                      >
+                        没有符合条件的节点
+                      </div>
+                    )}
+
+                    {/* 节点卡片网格 */}
+                    {!showLoading && !empty && (
+                      <NodeGrid nodes={list} onSelect={uuid => navigate('/node/' + uuid)} />
+                    )}
+                  </>
+
+                {/* 错误提示 */}
+                {hasErrors && (
+                  <div className="px-3 py-2">
+                    <Alert variant="warning">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertTitle>{errors.length} 个后端错误</AlertTitle>
+                      <AlertDescription>
+                        <ul className="list-disc pl-5 space-y-1 mt-2">
+                          {errors.map((e, i) => (
+                            <li key={i}>
+                              <b>{e.source}</b>：
+                              {e.error instanceof Error ? e.error.message : String(e.error)}
+                            </li>
+                          ))}
+                        </ul>
+                      </AlertDescription>
+                    </Alert>
                   </div>
-                  <MiniWorldMap nodes={allNodes} onViewMap={() => setView('map')} />
-                </div>
-                {/* 排行榜 */}
-                <TopRanking nodes={allNodes} onSelect={setSelected} />
-              </div>
-            )}
+                )}
+              </main>
 
-            {/* 加载态 */}
-            <AnimatePresence>
-              {showLoading && !hasErrors && <LoadingScreen key="loading" />}
-            </AnimatePresence>
+              <Footer text={config.footer} nodes={allNodes} />
+              <Toaster />
+            </div>
+          }
+        />
+      </Routes>
+    </>
+  )
+}
 
-            {!showLoading && allNodes.length > 0 && empty && (
-              <div
-                className="py-20 text-center text-sm"
-                style={{ color: 'hsl(var(--muted-foreground))' }}
-              >
-                没有符合条件的节点
-              </div>
-            )}
-
-            {/* 节点卡片网格 */}
-            {!showLoading && !empty && (
-              <NodeGrid nodes={list} onSelect={setSelected} />
-            )}
-          </>
-        )}
-
-        {/* 错误提示 */}
-        {hasErrors && (
-          <div className="px-3 py-2">
-            <Alert variant="warning">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>{errors.length} 个后端错误</AlertTitle>
-              <AlertDescription>
-                <ul className="list-disc pl-5 space-y-1 mt-2">
-                  {errors.map((e, i) => (
-                    <li key={i}>
-                      <b>{e.source}</b>：
-                      {e.error instanceof Error ? e.error.message : String(e.error)}
-                    </li>
-                  ))}
-                </ul>
-              </AlertDescription>
-            </Alert>
-          </div>
-        )}
-      </main>
-
-      <Footer text={config.footer} nodes={allNodes} />
-
-      <NodeDetail
-        node={selectedNode}
-        onClose={() => setSelected(null)}
-        showSource={(config.site_tokens?.length ?? 0) > 1}
-        fetchTcpHistory={fetchNodeTcpHistory}
-        fetchUptimeHistory={fetchUptimeHistory}
-      />
-      <Toaster />
+function MapRoute({ nodes, onSelect, onClose }: {
+  nodes: Node[]
+  onSelect: (uuid: string) => void
+  onClose: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-40" style={{ background: 'hsl(var(--background))' }}>
+      <button
+        onClick={onClose}
+        style={{
+          position: 'absolute', top: 12, left: 12, zIndex: 10,
+          width: 36, height: 36, borderRadius: '50%',
+          border: '1px solid hsl(var(--border))',
+          background: 'hsl(var(--card))',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer', color: 'hsl(var(--foreground))',
+        }}
+        aria-label="返回"
+      >
+        ←
+      </button>
+      <WorldMap nodes={nodes} onSelect={onSelect} />
     </div>
+  )
+}
+
+function NodeDetailRoute({ nodes, showSource, fetchTcpHistory, fetchUptimeHistory }: {
+  nodes: Map<string, Node>
+  showSource: boolean
+  fetchTcpHistory: (uuid: string) => Promise<TcpPingRecord[]>
+  fetchUptimeHistory: (uuid: string) => Promise<HistorySample[]>
+}) {
+  const { uuid } = useParams<{ uuid: string }>()
+  const navigate = useNavigate()
+  const node = uuid ? (nodes.get(uuid) ?? null) : null
+  return (
+    <NodeDetail
+      node={node}
+      onClose={() => navigate('/')}
+      showSource={showSource}
+      fetchTcpHistory={fetchTcpHistory}
+      fetchUptimeHistory={fetchUptimeHistory}
+    />
   )
 }

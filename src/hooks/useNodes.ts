@@ -1,7 +1,7 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { BackendPool } from '../api/pool'
-import { dynamicSummaryMulti, kvGetMulti, listAgentUuids, queryNodeTcpPings, queryTcpPings, querySummaryHistory, staticDataMulti } from '../api/methods'
+import { activeConnections, dynamicSummaryMulti, kvGetMulti, listAgentUuids, queryNodeTcpPings, queryTcpPings, querySummaryHistory, staticDataMulti } from '../api/methods'
 import { isOnline } from '../utils/status'
 import type { DynamicSummary, HistorySample, Node, NodeMeta, SiteConfig, TcpPingRecord } from '../types'
 
@@ -105,6 +105,7 @@ export function useNodes(config: SiteConfig | null) {
   const [tcpPingMap, setTcpPingMap] = useState<Map<string, TcpPingRecord[]>>(new Map())
   const [errors, setErrors] = useState<BackendError[]>([])
   const [loading, setLoading] = useState(true)
+  const [onlineViewers, setOnlineViewers] = useState<number | null>(null)
   const firstDynRef = useRef(false)
   const poolRef = useRef<BackendPool | null>(null)
   const historyFetchedRef = useRef<Set<string>>(new Set())
@@ -313,9 +314,19 @@ export function useNodes(config: SiteConfig | null) {
 
     const clockTimer = setInterval(() => setTick(t => t + 1), 5000)
 
+    const tickViewers = async () => {
+      try {
+        const count = await activeConnections(pool.entries[0].client)
+        setOnlineViewers(count)
+      } catch {}
+    }
+    tickViewers()
+    const viewersTimer = setInterval(tickViewers, 10_000)
+
     return () => {
       ac.abort()
       clearInterval(clockTimer)
+      clearInterval(viewersTimer)
       document.removeEventListener('visibilitychange', onVisible)
       poolRef.current = null
       pool.close()
@@ -469,5 +480,5 @@ export function useNodes(config: SiteConfig | null) {
     )
   }, [])
 
-  return { nodes, errors, loading, fetchNodeTcpHistory, fetchCardHistory, fetchUptimeHistory, prefetchAllHistory }
+  return { nodes, errors, loading, onlineViewers, fetchNodeTcpHistory, fetchCardHistory, fetchUptimeHistory, prefetchAllHistory }
 }
