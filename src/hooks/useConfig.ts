@@ -7,7 +7,7 @@ export function useConfig() {
 
   useEffect(() => {
     let alive = true
-    fetch('config.json', { cache: 'no-cache' })
+    fetch(`${import.meta.env.BASE_URL}config.json`, { cache: 'no-cache' })
       .then(r => {
         if (!r.ok) throw new Error(`config.json ${r.status}`)
         return r.json() as Promise<SiteConfig>

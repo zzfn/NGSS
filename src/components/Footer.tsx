@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Node } from '../types'
+import { bytes } from '../utils/format'
 
 const REPO = 'https://github.com/NodeSeekDev/NodeGet-StatusShow'
 
@@ -20,6 +21,8 @@ export function Footer({ text, nodes = [] }: { text?: string; nodes?: Node[] }) 
 
   const total = nodes.length
   const online = nodes.filter(n => n.online).length
+  const netIn  = nodes.reduce((s, n) => s + (n.dynamic?.receive_speed  ?? 0), 0)
+  const netOut = nodes.reduce((s, n) => s + (n.dynamic?.transmit_speed ?? 0), 0)
 
   return (
     <footer
@@ -51,6 +54,18 @@ export function Footer({ text, nodes = [] }: { text?: string; nodes?: Node[] }) 
         </span>
 
         <span className="opacity-30 shrink-0">│</span>
+
+        {(netIn > 0 || netOut > 0) && (
+          <>
+            <span className="shrink-0" style={{ color: 'hsl(var(--nx-text-secondary))' }}>
+              <span className="opacity-50">Net </span>
+              <span className="tabular-nums" style={{ color: 'hsl(217 91% 60%)' }}>↓{bytes(netIn)}/s</span>
+              <span className="opacity-30"> · </span>
+              <span className="tabular-nums" style={{ color: 'hsl(142 71% 45%)' }}>↑{bytes(netOut)}/s</span>
+            </span>
+            <span className="opacity-30 shrink-0">│</span>
+          </>
+        )}
 
         <span className="shrink-0" style={{ color: 'hsl(var(--nx-text-secondary))' }}>
           <span className="opacity-50">Local </span>

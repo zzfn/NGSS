@@ -1,12 +1,12 @@
 {
-  "site_name": "WYNN",
-  "site_logo": "",
+  "site_name": "N",
+  "site_logo": "/n-logo.svg",
   "footer": "Powered by NodeGet",
   "site_tokens": [
     {
-      "name": "WYNN",
-      "backend_url": "wss://api.wwm.app",
-      "token": "2yppNqnebcoFBdIv:MfpPajwLTyfNys6ubqwlvn5Jnv12N3gO"
+      "name": "Northflank",
+      "backend_url": "wss://p01--nodeget--bkr4xfb9pfzy.code.run",
+      "token": "B8YesbZ6YfEbadrA:vJm5sbpNAX0gkXC3HhJOM6rXj9dH5Pm5"
     }
   ]
 }

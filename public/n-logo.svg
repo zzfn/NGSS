@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 22 28">
+  <defs>
+    <!-- 柔光晕染 -->
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="1.2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- N 主体（白色，带光晕） -->
+  <g filter="url(#glow)" fill="white">
+    <rect x="0"  y="0" width="5" height="28"/>
+    <polygon points="5,0 10,0 17,28 12,28"/>
+    <rect x="17" y="0" width="5" height="28"/>
+  </g>
+
+  <!-- 绿色扫描线：斜穿对角笔画 -->
+  <line x1="6.5" y1="3" x2="15.5" y2="25"
+        stroke="#22c55e" stroke-width="0.9" opacity="0.7"
+        stroke-linecap="round"/>
+
+  <!-- 左下角 LED 点 -->
+  <circle cx="2.5" cy="25.5" r="1.6" fill="#22c55e" opacity="0.9"/>
+  <!-- LED 光晕 -->
+  <circle cx="2.5" cy="25.5" r="3" fill="#22c55e" opacity="0.15"/>
+</svg>

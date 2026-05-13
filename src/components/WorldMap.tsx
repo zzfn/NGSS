@@ -109,6 +109,7 @@ export const WorldMap = memo(function WorldMap({
   const [picker, setPicker] = useState<{ cluster: Cluster; x: number; y: number } | null>(null)
   const [zoom, setZoom] = useState(1)
 
+
   const points = useMemo<Point[]>(() => {
     const out: Point[] = []
     for (const node of nodes) {
@@ -198,11 +199,15 @@ export const WorldMap = memo(function WorldMap({
   }, [points])
 
   return (
-    <div className="relative w-full overflow-hidden rounded-xl border" style={{ background: c.bg }}>
+    <div
+      className="relative w-full h-full overflow-hidden"
+      style={{ background: c.bg }}
+    >
+
       <ComposableMap
         projection="geoMercator"
         projectionConfig={{ scale: 140, center }}
-        style={{ width: '100%', height: '500px' }}
+        style={{ width: '100%', height: '100%' }}
       >
         <ZoomableGroup zoom={1} minZoom={0.5} maxZoom={8} onMoveEnd={({ zoom: z }) => setZoom(z)}>
           <Geographies geography={geoFeatures}>
