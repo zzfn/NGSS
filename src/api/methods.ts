@@ -67,7 +67,11 @@ export interface TcpPingRow {
   cron_source: string | null
 }
 
-// 全局轮询：查所有节点最近一段时间（用于 NodeCard 摘要）
+// 启动快照：每个 (uuid, cron_source) 组合仅返回最新一条，用于初始化卡片状态
+export const queryTcpPingsLatest = (c: RpcClient) =>
+  c.call<TcpPingRow[]>('task_query_latest_per_node', { task_type: 'tcp_ping' })
+
+// 增量轮询：查指定时间窗口内的数据（from = 上次游标 + 1，只拉新增）
 export const queryTcpPings = (c: RpcClient, from: number, to: number, limit?: number) =>
   c.call<TcpPingRow[]>('task_query', {
     task_data_query: {

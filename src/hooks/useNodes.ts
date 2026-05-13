@@ -1,6 +1,6 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BackendPool } from '../api/pool'
-import { activeConnections, dynamicSummaryMulti, kvGetMulti, listAgentUuids, queryNodeTcpPings, queryTcpPings, querySummaryBuckets, querySummaryHistory, querySummaryHistoryMulti, staticDataMulti } from '../api/methods'
+import { activeConnections, dynamicSummaryMulti, kvGetMulti, listAgentUuids, queryNodeTcpPings, queryTcpPings, queryTcpPingsLatest, querySummaryBuckets, querySummaryHistory, querySummaryHistoryMulti, staticDataMulti } from '../api/methods'
 import { isOnline } from '../utils/status'
 import type { DynamicSummary, HistorySample, Node, NodeMeta, SiteConfig, TcpPingRecord } from '../types'
 
@@ -107,6 +107,8 @@ export function useNodes(config: SiteConfig | null) {
   const [onlineViewers, setOnlineViewers] = useState<number | null>(null)
   const firstDynRef = useRef(false)
   const poolRef = useRef<BackendPool | null>(null)
+  // 每个 entry（后端 URL）单独记录上次成功拉取的最大 timestamp，用于增量轮询游标
+  const lastTcpPingTsRef = useRef<Map<string, number>>(new Map())
   const historyFetchedRef = useRef<Set<string>>(new Set())
   const [tick, setTick] = useState(0)
 
@@ -185,7 +187,7 @@ export function useNodes(config: SiteConfig | null) {
         }),
       )
 
-      await Promise.all([tickDynamic(), tickTcpPing()])
+      await Promise.all([tickDynamic(), bootstrapTcpPing()])
 
       // 预加载历史波形（30分钟），每个后端一次批量请求
       const now = Date.now()
@@ -272,43 +274,83 @@ export function useNodes(config: SiteConfig | null) {
       }
     }
 
-    const tickTcpPing = async () => {
-      const now = Date.now()
-      const from = now - TCP_PING_WINDOW_MS
-      const byUuid = new Map<string, TcpPingRecord[]>()
+    // 将按 uuid 分组的 records 写入 tcpPingMap
+    const applyTcpPingByUuid = (byUuid: Map<string, TcpPingRecord[]>, isBootstrap: boolean) => {
+      if (!byUuid.size) return
+      setTcpPingMap(prev => {
+        const next = new Map(prev)
+        for (const [uuid, newRecords] of byUuid) {
+          if (isBootstrap) {
+            // 快照：直接覆盖（此时 Map 为空，无需合并）
+            newRecords.sort((a, b) => a.t - b.t)
+            next.set(uuid, newRecords)
+          } else {
+            // 增量：append 新数据，去重后保留最近 TCP_PING_MAX 条
+            const existing = prev.get(uuid) ?? []
+            const seen = new Set(existing.map(r => `${r.t}-${r.cron}`))
+            const fresh = newRecords.filter(r => !seen.has(`${r.t}-${r.cron}`))
+            if (!fresh.length) continue
+            const merged = [...existing, ...fresh]
+            merged.sort((a, b) => a.t - b.t)
+            next.set(uuid, merged.slice(-TCP_PING_MAX))
+          }
+        }
+        return next
+      })
+    }
+
+    // 启动快照：每个 (uuid, cron_source) 只取最新一条，初始化卡片延迟显示
+    const bootstrapTcpPing = async () => {
       const results = await Promise.allSettled(
         pool.entries.map(async entry => {
-          const rows = await queryTcpPings(entry.client, from, now)
-          for (const r of rows || []) {
+          const rows = await queryTcpPingsLatest(entry.client)
+          if (!rows?.length) return
+          const byUuid = new Map<string, TcpPingRecord[]>()
+          let maxTs = 0
+          for (const r of rows) {
             if (!r.uuid || r.timestamp == null) continue
             const record: TcpPingRecord = { t: r.timestamp, cron: r.cron_source ?? '未知', latency: r.task_event_result?.tcp_ping ?? null }
             const arr = byUuid.get(r.uuid) ?? []
             arr.push(record)
             byUuid.set(r.uuid, arr)
+            if (r.timestamp > maxTs) maxTs = r.timestamp
           }
+          if (maxTs > 0) lastTcpPingTsRef.current.set(entry.name, maxTs)
+          applyTcpPingByUuid(byUuid, true)
+        }),
+      )
+      for (const r of results) {
+        if (r.status === 'rejected') console.warn('[tcpping bootstrap]', r.reason)
+      }
+    }
+
+    // 增量轮询：只查上次游标之后的新数据，大幅减少传输量
+    const tickTcpPing = async () => {
+      const now = Date.now()
+      const results = await Promise.allSettled(
+        pool.entries.map(async entry => {
+          const lastTs = lastTcpPingTsRef.current.get(entry.name)
+          // 没有游标说明 bootstrap 失败，fallback 到短窗口补偿
+          const from = lastTs != null ? lastTs + 1 : now - TCP_PING_WINDOW_MS
+          const rows = await queryTcpPings(entry.client, from, now)
+          if (!rows?.length) return
+          const byUuid = new Map<string, TcpPingRecord[]>()
+          let maxTs = lastTs ?? 0
+          for (const r of rows) {
+            if (!r.uuid || r.timestamp == null) continue
+            const record: TcpPingRecord = { t: r.timestamp, cron: r.cron_source ?? '未知', latency: r.task_event_result?.tcp_ping ?? null }
+            const arr = byUuid.get(r.uuid) ?? []
+            arr.push(record)
+            byUuid.set(r.uuid, arr)
+            if (r.timestamp > maxTs) maxTs = r.timestamp
+          }
+          if (maxTs > (lastTs ?? 0)) lastTcpPingTsRef.current.set(entry.name, maxTs)
+          applyTcpPingByUuid(byUuid, false)
         }),
       )
       for (const r of results) {
         if (r.status === 'rejected') console.warn('[tcpping]', r.reason)
       }
-      if (!byUuid.size) return
-      setTcpPingMap(prev => {
-        const next = new Map(prev)
-        for (const [uuid, records] of byUuid) {
-          const existing = prev.get(uuid) ?? []
-          const merged = [...existing, ...records]
-          const seen = new Set<string>()
-          const deduped = merged.filter(r => {
-            const key = `${r.t}-${r.cron}`
-            if (seen.has(key)) return false
-            seen.add(key)
-            return true
-          })
-          deduped.sort((a, b) => a.t - b.t)
-          next.set(uuid, deduped.slice(-TCP_PING_MAX))
-        }
-        return next
-      })
     }
 
     const ac = new AbortController()
@@ -355,6 +397,7 @@ export function useNodes(config: SiteConfig | null) {
       clearInterval(viewersTimer)
       document.removeEventListener('visibilitychange', onVisible)
       poolRef.current = null
+      lastTcpPingTsRef.current.clear()
       pool.close()
     }
   }, [config])
