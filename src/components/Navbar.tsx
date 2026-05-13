@@ -43,9 +43,13 @@ export function Navbar({
   interface IPInfo { ip: string; asn?: string; org?: string; city?: string; country_code?: string }
   const [ipInfo, setIpInfo] = useState<IPInfo | null>(null)
   useEffect(() => {
-    fetch('https://ipapi.co/json/')
+    // ipinfo.io: HTTPS，免费 5万次/月，无需 key；org 格式 "AS1234 ISP Name"
+    fetch('https://ipinfo.io/json')
       .then(r => r.json())
-      .then((d: IPInfo) => setIpInfo(d))
+      .then((d: { ip: string; city?: string; country?: string; org?: string }) => {
+        const [asn, ...rest] = (d.org ?? '').split(' ')
+        setIpInfo({ ip: d.ip, city: d.city, country_code: d.country, org: rest.join(' ') || d.org, asn })
+      })
       .catch(() => {})
   }, [])
 
