@@ -18,7 +18,7 @@ import { deriveUsage } from './utils/derive'
 import { resolveCoords } from './utils/coords'
 import type { View, Node, TcpPingRecord, HistorySample } from './types'
 
-const DEFAULT_LOGO = `${import.meta.env.BASE_URL}logo.png`
+const DEFAULT_LOGO = `${import.meta.env.BASE_URL}favicon.svg`
 
 // ── 移动端检测 hook ────────────────────────────────────────────────────────────
 function useIsMobile() {

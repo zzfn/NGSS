@@ -97,7 +97,7 @@ export function Navbar({
     >
       {/* 左：LOGO + 站点名 */}
       <div
-        className="flex items-center gap-2 pl-2 pr-2 sm:gap-3 sm:pl-3 sm:pr-4 shrink-0 border-r"
+        className="flex items-center gap-2 pl-2 pr-2 sm:gap-3 sm:pl-3 sm:pr-2 shrink-0 border-r"
         style={{ borderColor: divider }}
       >
         {onMenuOpen && (
@@ -123,14 +123,14 @@ export function Navbar({
             <img
               src={logo}
               alt=""
-              style={{ height: 28, width: 'auto', filter: isDark ? 'none' : 'invert(1)' }}
+              style={{ height: 28, width: 'auto' }}
             />
           )}
         </a>
       </div>
 
       {/* 中：搜索 + filter pills */}
-      <div className="flex-1 min-w-0 flex items-center gap-2 px-3 overflow-x-auto scrollbar-none">
+      <div className="flex-1 min-w-0 flex items-center gap-2 px-2 overflow-x-auto scrollbar-none">
         {/* 搜索框 */}
         <div className="relative shrink-0">
           <SearchIcon
