@@ -44,14 +44,14 @@
     --nx-accent-border: 217 91% 60% / 0.3;
 
     /* 在线绿 */
-    --nx-online: 142 60% 38%;
-    --nx-online-glow: 142 60% 38% / 0.25;
+    --nx-online: 142 60% 44%;
+    --nx-online-glow: 142 60% 44% / 0.25;
 
     /* 离线红 */
     --nx-offline: 0 72% 51%;
 
     /* 指标色 */
-    --nx-cpu: 217 91% 55%;
+    --nx-cpu: 199 89% 44%;
     --nx-mem: 283 70% 60%;
     --nx-disk: 30 85% 50%;
 
@@ -131,7 +131,7 @@
 
     --nx-offline: 0 72% 56%;
 
-    --nx-cpu: 217 91% 65%;
+    --nx-cpu: 199 89% 58%;
     --nx-mem: 283 70% 68%;
     --nx-disk: 30 85% 58%;
 
@@ -220,10 +220,17 @@
 .bg-warm {
   background-color: hsl(var(--background));
   background-image:
-    radial-gradient(ellipse 80% 60% at 10% 10%, hsl(217 91% 60% / 0.18) 0%, transparent 50%),
-    radial-gradient(ellipse 60% 50% at 90% 80%, hsl(270 70% 65% / 0.12) 0%, transparent 50%),
-    radial-gradient(ellipse 40% 40% at 50% 50%, hsl(142 60% 50% / 0.05) 0%, transparent 60%);
+    radial-gradient(ellipse 80% 60% at 10% 10%, hsl(217 91% 60% / 0.14) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 50% at 90% 80%, hsl(270 70% 65% / 0.09) 0%, transparent 50%),
+    radial-gradient(ellipse 40% 40% at 50% 50%, hsl(142 60% 50% / 0.04) 0%, transparent 60%);
   background-attachment: fixed;
+}
+
+.dark .bg-warm {
+  background-image:
+    radial-gradient(ellipse 80% 60% at 10% 10%, hsl(217 91% 65% / 0.07) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 50% at 90% 80%, hsl(270 70% 68% / 0.05) 0%, transparent 50%),
+    radial-gradient(ellipse 40% 40% at 50% 50%, hsl(142 60% 52% / 0.03) 0%, transparent 60%);
 }
 
 /* 兼容旧类名 */

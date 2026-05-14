@@ -79,6 +79,11 @@ export const querySummaryBuckets = (
   query: { uuid: string; from: number; to: number; buckets: number; fields: string[] },
 ) => c.call<SummaryBucket[]>('agent_query_dynamic_summary_buckets', { query })
 
+export const querySummaryBucketsMulti = (
+  c: RpcClient,
+  query: { uuids: string[]; from: number; to: number; buckets: number; fields: string[] },
+) => c.call<SummaryBucket[]>('agent_query_dynamic_summary_buckets_multi', { query })
+
 export interface VisitorDailyPoint {
   date: string
   pv: number

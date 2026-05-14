@@ -1,7 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { HistorySample } from '../types'
-
-type Days = 7 | 14 | 30 | 90
 
 interface Incident {
   start: number       // 第一个离线桶的时间戳
@@ -15,9 +13,9 @@ interface DayBar {
 }
 
 interface Props {
-  uuid: string
   online: boolean
-  fetchIncidentHistory: (uuid: string, days: number) => Promise<HistorySample[]>
+  days: number
+  data: HistorySample[] | null  // null = 加载中
 }
 
 // ── 工具函数 ──────────────────────────────────────────────────────────────────
@@ -99,19 +97,9 @@ function fmtDayLabel(ts: number): string {
 
 // ── 主组件 ────────────────────────────────────────────────────────────────────
 
-export function IncidentTimeline({ uuid, online, fetchIncidentHistory }: Props) {
-  const [days, setDays] = useState<Days>(30)
-  const [data, setData] = useState<HistorySample[] | null>(null)
-  const [loading, setLoading] = useState(false)
+export function IncidentTimeline({ online, days, data }: Props) {
   const [hoveredDay, setHoveredDay] = useState<DayBar | null>(null)
-
-  useEffect(() => {
-    setData(null)
-    setLoading(true)
-    fetchIncidentHistory(uuid, days)
-      .then(samples => { setData(samples); setLoading(false) })
-      .catch(() => { setData([]); setLoading(false) })
-  }, [uuid, days, fetchIncidentHistory])
+  const loading = data === null
 
   const dayBars = useMemo(() => data ? groupByDay(data) : [], [data])
   const incidents = useMemo(() => data ? detectIncidents(data) : [], [data])
@@ -122,36 +110,11 @@ export function IncidentTimeline({ uuid, online, fetchIncidentHistory }: Props) 
     return (onlineCount / data.length) * 100
   }, [data])
 
-  // 时间范围按钮
-  const RangeBtn = useCallback(({ d }: { d: Days }) => (
-    <button
-      onClick={() => setDays(d)}
-      style={{
-        fontSize: 10,
-        padding: '1px 7px',
-        borderRadius: 4,
-        cursor: 'pointer',
-        background: days === d ? 'hsl(var(--primary))' : 'transparent',
-        color: days === d ? 'hsl(var(--primary-foreground))' : 'hsl(var(--muted-foreground))',
-        border: `1px solid ${days === d ? 'hsl(var(--primary))' : 'hsl(var(--border))'}`,
-        transition: 'background 0.15s',
-      }}
-    >
-      {d}d
-    </button>
-  ), [days])
-
   return (
     <div className="space-y-3">
-      {/* 标题行：时间范围 + 总可用率 */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1">
-          <RangeBtn d={7} />
-          <RangeBtn d={14} />
-          <RangeBtn d={30} />
-          <RangeBtn d={90} />
-        </div>
-        {overallPct != null && (
+      {/* 可用率 */}
+      {overallPct != null && (
+        <div className="flex justify-end">
           <span
             className="text-xs font-mono font-bold tabular-nums"
             style={{
@@ -162,8 +125,8 @@ export function IncidentTimeline({ uuid, online, fetchIncidentHistory }: Props) 
           >
             {overallPct.toFixed(2)}% 可用率
           </span>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* 日期柱状图 */}
       <div>

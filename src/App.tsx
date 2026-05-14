@@ -18,6 +18,7 @@ import { VisitorStatsCard } from './components/VisitorStatsCard'
 import { deriveUsage } from './utils/derive'
 import { resolveCoords } from './utils/coords'
 import type { View, Node, TcpPingRecord, HistorySample } from './types'
+import type { SummaryBucket } from './api/methods'
 
 const DEFAULT_LOGO = `${import.meta.env.BASE_URL}favicon.svg`
 
@@ -42,7 +43,17 @@ const C_WARN = 'hsl(45 90% 52%)'   // 琥珀（告警）
 const C_BAD  = 'hsl(0 72% 58%)'    // 红（严重/危险）
 
 // ── 聚合流量 Sparkline ────────────────────────────────────────────────────────
-function TrafficSparkline({ nodes }: { nodes: Node[] }) {
+const SPARKLINE_WINDOW_MS = 30 * 60 * 1000   // 30 分钟
+const SPARKLINE_BUCKETS   = 30               // 30 桶（每桶 60s）
+const SPARKLINE_REFRESH_MS = 2 * 60 * 1000  // 每 2 分钟刷新一次
+
+function TrafficSparkline({
+  nodes,
+  fetchBuckets,
+}: {
+  nodes: Node[]
+  fetchBuckets?: (from: number, to: number, buckets: number) => Promise<SummaryBucket[]>
+}) {
   const W = 600
   const H = 72
   const PAD = { t: 10, b: 12, l: 8, r: 8 }
@@ -50,27 +61,53 @@ function TrafficSparkline({ nodes }: { nodes: Node[] }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null)
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
+  const [serverBuckets, setServerBuckets] = useState<SummaryBucket[] | null>(null)
+
+  const hasNodes = nodes.length > 0
+  useEffect(() => {
+    if (!fetchBuckets || !hasNodes) return
+    let cancelled = false
+    const doFetch = () => {
+      const now = Date.now()
+      fetchBuckets(now - SPARKLINE_WINDOW_MS, now, SPARKLINE_BUCKETS)
+        .then(data => { if (!cancelled && data?.length >= 2) setServerBuckets(data) })
+        .catch(() => {})
+    }
+    doFetch()
+    const timer = setInterval(doFetch, SPARKLINE_REFRESH_MS)
+    return () => { cancelled = true; clearInterval(timer) }
+  }, [hasNodes, fetchBuckets])
 
   const { inPath, outPath, totalIn, totalOut, ins, outs, keys, step, maxVal } = useMemo(() => {
-    const BUCKET = 30_000
-    const bucketIn = new Map<number, number>()
-    const bucketOut = new Map<number, number>()
-    for (const n of nodes) {
-      for (const h of n.history) {
-        const k = Math.floor(h.t / BUCKET) * BUCKET
-        bucketIn.set(k, (bucketIn.get(k) ?? 0) + (h.netIn ?? 0))
-        bucketOut.set(k, (bucketOut.get(k) ?? 0) + (h.netOut ?? 0))
-      }
-    }
-    const keys = [...new Set([...bucketIn.keys(), ...bucketOut.keys()])].sort()
-    if (keys.length < 2) return { inPath: '', outPath: '', totalIn: 0, totalOut: 0, ins: [], outs: [], keys: [], step: 0, maxVal: 1 }
-
-    const ins = keys.map(k => bucketIn.get(k) ?? 0)
-    const outs = keys.map(k => bucketOut.get(k) ?? 0)
-    const maxVal = Math.max(...ins, ...outs, 1)
     const cW = W - PAD.l - PAD.r
     const cH = H - PAD.t - PAD.b
-    const step = cW / (keys.length - 1)
+
+    let ins: number[], outs: number[], keys: number[]
+
+    if (serverBuckets && serverBuckets.length >= 2) {
+      ins  = serverBuckets.map(b => (b.receive_speed  as number | null) ?? 0)
+      outs = serverBuckets.map(b => (b.transmit_speed as number | null) ?? 0)
+      keys = serverBuckets.map(b => b.t)
+    } else {
+      // 后端数据未就绪时，降级使用 nodes 实时历史（4 分钟窗口）
+      const BUCKET = 30_000
+      const bucketIn  = new Map<number, number>()
+      const bucketOut = new Map<number, number>()
+      for (const n of nodes) {
+        for (const h of n.history) {
+          const k = Math.floor(h.t / BUCKET) * BUCKET
+          bucketIn.set(k,  (bucketIn.get(k)  ?? 0) + (h.netIn  ?? 0))
+          bucketOut.set(k, (bucketOut.get(k) ?? 0) + (h.netOut ?? 0))
+        }
+      }
+      keys = [...new Set([...bucketIn.keys(), ...bucketOut.keys()])].sort()
+      if (keys.length < 2) return { inPath: '', outPath: '', totalIn: 0, totalOut: 0, ins: [], outs: [], keys: [], step: 0, maxVal: 1 }
+      ins  = keys.map(k => bucketIn.get(k)  ?? 0)
+      outs = keys.map(k => bucketOut.get(k) ?? 0)
+    }
+
+    const maxVal = Math.max(...ins, ...outs, 1)
+    const step   = cW / (keys.length - 1)
 
     const toPath = (vals: number[]) =>
       vals
@@ -81,10 +118,8 @@ function TrafficSparkline({ nodes }: { nodes: Node[] }) {
         })
         .join(' ')
 
-    const totalIn = ins[ins.length - 1]
-    const totalOut = outs[outs.length - 1]
-    return { inPath: toPath(ins), outPath: toPath(outs), totalIn, totalOut, ins, outs, keys, step, maxVal }
-  }, [nodes])
+    return { inPath: toPath(ins), outPath: toPath(outs), totalIn: ins[ins.length - 1], totalOut: outs[outs.length - 1], ins, outs, keys, step, maxVal }
+  }, [nodes, serverBuckets])
 
   function fmtSpeed(v: number) {
     if (v >= 1e9) return `${(v / 1e9).toFixed(1)}G`
@@ -601,7 +636,7 @@ function MiniWorldMap({
 export function App() {
   const isMobile = useIsMobile()
   const { config, error: configError } = useConfig()
-  const { nodes, errors, loading, visitorStats, fetchNodeTcpHistory, fetchUptimeHistory, fetchIncidentHistory } = useNodes(config)
+  const { nodes, errors, loading, visitorStats, fetchNodeTcpHistory, fetchUptimeHistory, fetchIncidentHistory, fetchAggregateTrafficBuckets, fetchNetworkBuckets } = useNodes(config)
   const deferredNodes = useDeferredValue(nodes)
   const navigate = useNavigate()
 
@@ -731,8 +766,8 @@ export function App() {
               nodes={nodes}
               showSource={(config.site_tokens?.length ?? 0) > 1}
               fetchTcpHistory={fetchNodeTcpHistory}
-              fetchUptimeHistory={fetchUptimeHistory}
               fetchIncidentHistory={fetchIncidentHistory}
+              fetchNetworkBuckets={fetchNetworkBuckets}
               onlineViewers={null}
             />
           }
@@ -796,7 +831,7 @@ export function App() {
                             isMobile={isMobile}
                           />
                           <div className="min-w-0 overflow-hidden">
-                            <TrafficSparkline nodes={allNodes} />
+                            <TrafficSparkline nodes={allNodes} fetchBuckets={fetchAggregateTrafficBuckets} />
                           </div>
                           <MiniWorldMap nodes={allNodes} onViewMap={() => navigate('/map')} hidden={isMobile} />
                         </div>
@@ -886,12 +921,12 @@ function MapRoute({ nodes, onSelect, onClose }: {
   )
 }
 
-function NodeDetailRoute({ nodes, showSource, fetchTcpHistory, fetchUptimeHistory, fetchIncidentHistory, onlineViewers }: {
+function NodeDetailRoute({ nodes, showSource, fetchTcpHistory, fetchIncidentHistory, fetchNetworkBuckets, onlineViewers }: {
   nodes: Map<string, Node>
   showSource: boolean
   fetchTcpHistory: (uuid: string) => Promise<TcpPingRecord[]>
-  fetchUptimeHistory: (uuid: string) => Promise<HistorySample[]>
   fetchIncidentHistory: (uuid: string, days: number) => Promise<HistorySample[]>
+  fetchNetworkBuckets: (uuid: string, from: number, to: number, buckets: number) => Promise<import('./api/methods').SummaryBucket[]>
   onlineViewers: number | null
 }) {
   const { uuid } = useParams<{ uuid: string }>()
@@ -903,8 +938,8 @@ function NodeDetailRoute({ nodes, showSource, fetchTcpHistory, fetchUptimeHistor
       onClose={() => navigate('/')}
       showSource={showSource}
       fetchTcpHistory={fetchTcpHistory}
-      fetchUptimeHistory={fetchUptimeHistory}
       fetchIncidentHistory={fetchIncidentHistory}
+      fetchNetworkBuckets={fetchNetworkBuckets}
       onlineViewers={onlineViewers}
     />
   )

@@ -16,9 +16,10 @@ import { bytes, pct, relativeAge, uptime } from '../utils/format'
 import { deriveUsage, displayName, osLabel, virtLabel } from '../utils/derive'
 import { ispColor, shortCron } from '../utils/tcpping'
 import type { HistorySample, Node, TcpPingRecord } from '../types'
+import type { SummaryBucket } from '../api/methods'
 
 // ─── 图表颜色常量 ───────────────────────────────────────────────────────────────
-const C_CPU  = 'hsl(217 91% 60%)'
+const C_CPU  = 'hsl(199 89% 52%)'
 const C_MEM  = 'hsl(283 70% 62%)'
 const C_DISK = 'hsl(30 85% 52%)'
 const C_IN   = 'hsl(142 71% 45%)'
@@ -42,14 +43,19 @@ const RANGE_MS: Record<Range, number> = {
   '30d': 30 * 86400 * 1000,
 }
 
+// 宕机事件时间线使用天为单位，短范围最少展示 7 天
+const RANGE_TO_DAYS: Record<Range, number> = {
+  '1h': 7, '6h': 7, '24h': 7, '7d': 7, '30d': 30,
+}
+
 // ─── Props ───────────────────────────────────────────────────────────────────────
 interface Props {
   node: Node | null
   onClose: () => void
   showSource?: boolean
   fetchTcpHistory?: (uuid: string) => Promise<TcpPingRecord[]>
-  fetchUptimeHistory?: (uuid: string) => Promise<HistorySample[]>
   fetchIncidentHistory?: (uuid: string, days: number) => Promise<HistorySample[]>
+  fetchNetworkBuckets?: (uuid: string, from: number, to: number, buckets: number) => Promise<SummaryBucket[]>
   inline?: boolean
   onlineViewers?: number | null
 }
@@ -252,14 +258,15 @@ export function NodeDetail({
   onClose,
   showSource,
   fetchTcpHistory,
-  fetchUptimeHistory,
   fetchIncidentHistory,
+  fetchNetworkBuckets,
   inline = false,
   onlineViewers,
 }: Props) {
   const [detailPings, setDetailPings] = useState<TcpPingRecord[] | null>(null)
   const [loadingPings, setLoadingPings] = useState(false)
-  const [uptimeHistory, setUptimeHistory] = useState<HistorySample[]>([])
+  const [incidentData, setIncidentData] = useState<HistorySample[] | null>(null)
+  const [networkBuckets, setNetworkBuckets] = useState<SummaryBucket[]>([])
   const [range, setRange] = useState<Range>('6h')
   const [smooth, setSmooth] = useState(true)
 
@@ -273,14 +280,23 @@ export function NodeDetail({
       .catch(() => setLoadingPings(false))
   }, [node?.uuid, fetchTcpHistory])
 
-  // 加载在线状态历史
+  // 加载宕机历史（随时间范围切换重新拉取，结果同时用于在线率和事件时间线）
   useEffect(() => {
-    if (!node || !fetchUptimeHistory) { setUptimeHistory([]); return }
-    setUptimeHistory([])
-    fetchUptimeHistory(node.uuid)
-      .then(r => setUptimeHistory(r))
-      .catch(() => {})
-  }, [node?.uuid, fetchUptimeHistory])
+    if (!node || !fetchIncidentHistory) { setIncidentData(null); return }
+    setIncidentData(null)
+    fetchIncidentHistory(node.uuid, RANGE_TO_DAYS[range])
+      .then(data => setIncidentData(data))
+      .catch(() => setIncidentData([]))
+  }, [node?.uuid, range, fetchIncidentHistory])
+
+  // 加载网络历史（随时间范围切换重新拉取）
+  useEffect(() => {
+    if (!node || !fetchNetworkBuckets) { setNetworkBuckets([]); return }
+    const now = Date.now()
+    fetchNetworkBuckets(node.uuid, now - RANGE_MS[range], now, 60)
+      .then(data => setNetworkBuckets(data ?? []))
+      .catch(() => setNetworkBuckets([]))
+  }, [node?.uuid, range, fetchNetworkBuckets])
 
   // ESC 关闭 & body overflow 控制
   useEffect(() => {
@@ -302,6 +318,13 @@ export function NodeDetail({
   const cpu = node?.static?.cpu
   const tags = node?.meta?.tags ?? []
   const virt = node ? virtLabel(node) : ''
+
+  // 从宕机历史截取最近 24h 作为在线率条的数据源
+  const uptimeHistory = useMemo(() => {
+    if (!incidentData) return []
+    const cutoff = Date.now() - 24 * 3600_000
+    return incidentData.filter(s => s.t >= cutoff)
+  }, [incidentData])
 
   const allHistory = useMemo(() => {
     if (!node) return []
@@ -364,13 +387,30 @@ export function NodeDetail({
     return (lost / pings.length) * 100
   }, [pings])
 
-  // 网络峰值（历史最大值）
+  // 网络历史（server buckets → HistorySample，range 变化时重新拉取）
+  const networkHistory = useMemo(
+    () => networkBuckets
+      .filter(b => b.count > 0)
+      .map(b => ({
+        t: b.t,
+        online: true as const,
+        cpu: null,
+        mem: null,
+        disk: null,
+        netIn:  (b.receive_speed  as number | null) ?? 0,
+        netOut: (b.transmit_speed as number | null) ?? 0,
+      })),
+    [networkBuckets],
+  )
+
+  // 网络峰值（优先用 server buckets，回退到实时历史）
   const netPeak = useMemo(() => {
-    if (allHistory.length === 0) return null
-    const maxIn  = Math.max(...allHistory.map(h => h.netIn ?? 0))
-    const maxOut = Math.max(...allHistory.map(h => h.netOut ?? 0))
+    const src = networkHistory.length > 0 ? networkHistory : allHistory
+    if (src.length === 0) return null
+    const maxIn  = Math.max(...src.map(h => h.netIn ?? 0))
+    const maxOut = Math.max(...src.map(h => h.netOut ?? 0))
     return { in: maxIn, out: maxOut }
-  }, [allHistory])
+  }, [networkHistory, allHistory])
 
   // swap 百分比
   const swapPct = d?.total_swap && d.used_swap != null
@@ -621,7 +661,7 @@ export function NodeDetail({
 
             {/* 网络吞吐量图（镜像式） */}
             <Panel title="网络吞吐量">
-              <NetworkChart data={filteredHistory} peak={netPeak} />
+              <NetworkChart data={networkHistory.length >= 2 ? networkHistory : filteredHistory} peak={netPeak} />
             </Panel>
 
             {/* TCP Ping 三网延迟 */}
@@ -733,9 +773,9 @@ export function NodeDetail({
             {fetchIncidentHistory && (
               <Panel title="宕机事件时间线">
                 <IncidentTimeline
-                  uuid={node.uuid}
                   online={node.online}
-                  fetchIncidentHistory={fetchIncidentHistory}
+                  days={RANGE_TO_DAYS[range]}
+                  data={incidentData}
                 />
               </Panel>
             )}

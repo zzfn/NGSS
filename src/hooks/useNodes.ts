@@ -1,7 +1,7 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BackendPool } from '../api/pool'
-import { dynamicSummaryMulti, kvGetMulti, listAgentUuids, queryNodeTcpPings, queryTcpPings, queryTcpPingsLatest, querySummaryBuckets, querySummaryHistory, querySummaryHistoryMulti, recordVisit, staticDataMulti, subscribeDynamicSummary, subscribeViewerCount, subscribeVisitorStats } from '../api/methods'
-import type { DynamicSummaryEvent, VisitorStats } from '../api/methods'
+import { dynamicSummaryMulti, kvGetMulti, listAgentUuids, queryNodeTcpPings, queryTcpPings, queryTcpPingsLatest, querySummaryBuckets, querySummaryBucketsMulti, querySummaryHistory, querySummaryHistoryMulti, recordVisit, staticDataMulti, subscribeDynamicSummary, subscribeViewerCount, subscribeVisitorStats } from '../api/methods'
+import type { DynamicSummaryEvent, SummaryBucket, VisitorStats } from '../api/methods'
 import { isOnline } from '../utils/status'
 import type { DynamicSummary, HistorySample, Node, NodeMeta, SiteConfig, TcpPingRecord } from '../types'
 
@@ -551,6 +551,59 @@ export function useNodes(config: SiteConfig | null) {
     }
   }, [])
 
+  const fetchNetworkBuckets = useCallback(
+    async (uuid: string, from: number, to: number, buckets: number): Promise<SummaryBucket[]> => {
+      const pool = poolRef.current
+      if (!pool) return []
+      const entry = pool.entries[0]
+      if (!entry) return []
+      try {
+        return await querySummaryBuckets(entry.client, {
+          uuid, from, to, buckets,
+          fields: ['receive_speed', 'transmit_speed'],
+        }) ?? []
+      } catch {
+        return []
+      }
+    },
+    [],
+  )
+
+  const fetchAggregateTrafficBuckets = useCallback(async (from: number, to: number, buckets: number) => {
+    const pool = poolRef.current
+    if (!pool) return []
+    const allResults = await Promise.allSettled(
+      pool.entries.map(async entry => {
+        const uuids = [...agentsRef.current.values()]
+          .filter(a => a.source === entry.name)
+          .map(a => a.uuid)
+        if (!uuids.length) return []
+        return await querySummaryBucketsMulti(entry.client, {
+          uuids,
+          from,
+          to,
+          buckets,
+          fields: ['receive_speed', 'transmit_speed'],
+        }) ?? []
+      }),
+    )
+    // 多后端结果按桶索引叠加
+    const merged: import('../api/methods').SummaryBucket[] = []
+    for (const r of allResults) {
+      if (r.status !== 'fulfilled' || !r.value.length) continue
+      for (let i = 0; i < r.value.length; i++) {
+        if (!merged[i]) {
+          merged[i] = { ...r.value[i] }
+        } else {
+          merged[i].receive_speed = ((merged[i].receive_speed as number) ?? 0) + ((r.value[i].receive_speed as number) ?? 0)
+          merged[i].transmit_speed = ((merged[i].transmit_speed as number) ?? 0) + ((r.value[i].transmit_speed as number) ?? 0)
+          merged[i].count += r.value[i].count
+        }
+      }
+    }
+    return merged
+  }, [])
+
   const fetchIncidentHistory = useCallback(async (uuid: string, days: number): Promise<HistorySample[]> => {
     const pool = poolRef.current
     if (!pool) return []
@@ -578,5 +631,5 @@ export function useNodes(config: SiteConfig | null) {
     }
   }, [])
 
-  return { nodes, errors, loading, visitorStats, fetchNodeTcpHistory, fetchCardHistory, fetchUptimeHistory, fetchIncidentHistory }
+  return { nodes, errors, loading, visitorStats, fetchNodeTcpHistory, fetchCardHistory, fetchUptimeHistory, fetchIncidentHistory, fetchAggregateTrafficBuckets, fetchNetworkBuckets }
 }
