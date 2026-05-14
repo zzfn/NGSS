@@ -33,7 +33,7 @@ function TodayStatItem({ rank, uv, pv }: { rank: number; uv: number; pv: number 
         今日
       </span>
       {/* 主信息：你是第几位 */}
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 2 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 2, whiteSpace: 'nowrap' }}>
         <span style={{ fontSize: 11, color: 'hsl(var(--muted-foreground))', opacity: 0.7 }}>第</span>
         <span
           style={{
@@ -46,7 +46,7 @@ function TodayStatItem({ rank, uv, pv }: { rank: number; uv: number; pv: number 
         >
           {rank.toLocaleString()}
         </span>
-        <span style={{ fontSize: 11, color: 'hsl(var(--muted-foreground))', opacity: 0.7 }}>位访客</span>
+        <span style={{ fontSize: 11, color: 'hsl(var(--muted-foreground))', opacity: 0.7, whiteSpace: 'nowrap' }}>位访客</span>
       </div>
       {/* 次信息：UV / PV 细节 */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: 'hsl(var(--muted-foreground))', opacity: 0.6 }}>
@@ -82,7 +82,7 @@ function StatItem({ label, uv, pv }: { label: string; uv: number; pv: number }) 
       >
         {label}
       </span>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, whiteSpace: 'nowrap' }}>
         <span style={{ display: 'flex', alignItems: 'baseline', gap: 2 }}>
           <span
             style={{
@@ -228,12 +228,12 @@ export function VisitorStatsCard({ stats }: Props) {
           >
             访问统计
           </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, overflow: 'hidden', whiteSpace: 'nowrap' }}>
             <span style={{ color: UV_COLOR }}>人</span>
             <span style={{ color: 'hsl(var(--muted-foreground))' }}>独立访客</span>
             <span style={{ color: 'hsl(var(--muted-foreground))', opacity: 0.4 }}>·</span>
             <span style={{ color: PV_COLOR }}>次</span>
-            <span style={{ color: 'hsl(var(--muted-foreground))' }}>浏览次数（同IP 5分钟内不重复计）</span>
+            <span style={{ color: 'hsl(var(--muted-foreground))', overflow: 'hidden', textOverflow: 'ellipsis' }}>浏览次数（5分钟去重）</span>
           </span>
           {hasHistory && (
             <button

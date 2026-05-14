@@ -770,7 +770,7 @@ export function App() {
                 }}
               />
 
-              <main className="flex-1 min-w-0 pt-11 pb-0">
+              <main className="flex-1 min-w-0 pt-11 pb-12">
 
                 <>
                     {/* ── 粘性顶部区域：仅告警 ── */}
