@@ -802,7 +802,7 @@ export function App() {
                         </div>
                         {/* 访问统计 */}
                         {visitorStats != null && (
-                          <VisitorStatsCard stats={visitorStats} />
+                          <VisitorStatsCard stats={visitorStats} isMobile={isMobile} />
                         )}
                         {/* 排行榜 */}
                         <TopRanking nodes={allNodes} onSelect={uuid => navigate('/node/' + uuid)} />
@@ -825,7 +825,7 @@ export function App() {
 
                     {/* 节点卡片网格 */}
                     {!showLoading && !empty && (
-                      <NodeGrid nodes={list} onSelect={uuid => navigate('/node/' + uuid)} fetchUptimeHistory={fetchUptimeHistory} />
+                      <NodeGrid nodes={list} onSelect={uuid => navigate('/node/' + uuid)} fetchUptimeHistory={fetchUptimeHistory} isMobile={isMobile} />
                     )}
                   </>
 

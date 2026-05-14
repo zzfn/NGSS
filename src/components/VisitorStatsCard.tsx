@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
 
 interface Props {
   stats: VisitorStats
+  isMobile?: boolean
 }
 
 const UV_COLOR = 'hsl(199 89% 55%)'
@@ -194,7 +195,7 @@ function TrendChart({ data, large }: { data: VisitorStats['history']; large?: bo
   )
 }
 
-export function VisitorStatsCard({ stats }: Props) {
+export function VisitorStatsCard({ stats, isMobile }: Props) {
   const [open, setOpen] = useState(false)
   const dividerColor = 'hsl(var(--border) / 0.35)'
   const hasHistory = (stats.history?.length ?? 0) > 1
@@ -258,9 +259,12 @@ export function VisitorStatsCard({ stats }: Props) {
         </div>
 
         {/* 今日 / 昨日 / 累计 */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)' }}>
           <TodayStatItem rank={stats.today_rank} uv={stats.today_uv} pv={stats.today_pv} />
-          <div style={{ borderLeft: `1px solid ${dividerColor}`, borderRight: `1px solid ${dividerColor}` }}>
+          <div style={isMobile
+            ? { borderTop: `1px solid ${dividerColor}`, borderBottom: `1px solid ${dividerColor}` }
+            : { borderLeft: `1px solid ${dividerColor}`, borderRight: `1px solid ${dividerColor}` }
+          }>
             <StatItem label="昨日" uv={stats.yesterday_uv} pv={stats.yesterday_pv} />
           </div>
           <StatItem label="累计" uv={stats.all_time_uv} pv={stats.all_time_pv} />

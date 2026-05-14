@@ -481,10 +481,12 @@ export function NodeGrid({
   nodes,
   onSelect,
   fetchUptimeHistory,
+  isMobile,
 }: {
   nodes: Node[]
   onSelect?: (uuid: string) => void
   fetchUptimeHistory?: (uuid: string) => Promise<HistorySample[]>
+  isMobile?: boolean
 }) {
   if (!nodes.length) {
     return (
@@ -501,7 +503,7 @@ export function NodeGrid({
       style={{
         padding: 12,
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(max(160px, 19%), 1fr))',
+        gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(max(160px, 19%), 1fr))',
         gap: 12,
       }}
     >
