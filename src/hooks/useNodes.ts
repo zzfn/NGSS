@@ -108,6 +108,7 @@ export function useNodes(config: SiteConfig | null) {
   const [errors, setErrors] = useState<BackendError[]>([])
   const [loading, setLoading] = useState(true)
   const [visitorStats, setVisitorStats] = useState<VisitorStats | null>(null)
+  const myRankRef = useRef<number | null>(null)
   const poolRef = useRef<BackendPool | null>(null)
   // 每个 entry（后端 URL）单独记录上次成功拉取的最大 timestamp，用于增量轮询游标
   const lastTcpPingTsRef = useRef<Map<string, number>>(new Map())
@@ -430,7 +431,10 @@ export function useNodes(config: SiteConfig | null) {
     if (firstBackendUrl) {
       recordVisit(firstBackendUrl)
     }
-    subscribeVisitorStats(pool.entries[0].client, stats => setVisitorStats(stats))
+    subscribeVisitorStats(pool.entries[0].client, stats => {
+      if (myRankRef.current == null) myRankRef.current = stats.today_rank
+      setVisitorStats({ ...stats, today_rank: myRankRef.current })
+    })
       .then(unsub => unsubscribeFns.push(unsub))
       .catch(e => console.warn('[useNodes] subscribeVisitorStats 失败:', e))
 
