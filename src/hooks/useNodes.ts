@@ -1,6 +1,6 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BackendPool } from '../api/pool'
-import { dynamicSummaryMulti, fetchVisitorStats, kvGetMulti, listAgentUuids, queryNodeTcpPings, queryTcpPings, queryTcpPingsLatest, querySummaryBuckets, querySummaryHistory, querySummaryHistoryMulti, staticDataMulti, subscribeDynamicSummary, subscribeViewerCount } from '../api/methods'
+import { dynamicSummaryMulti, kvGetMulti, listAgentUuids, queryNodeTcpPings, queryTcpPings, queryTcpPingsLatest, querySummaryBuckets, querySummaryHistory, querySummaryHistoryMulti, recordVisit, staticDataMulti, subscribeDynamicSummary, subscribeViewerCount, subscribeVisitorStats } from '../api/methods'
 import type { DynamicSummaryEvent, VisitorStats } from '../api/methods'
 import { isOnline } from '../utils/status'
 import type { DynamicSummary, HistorySample, Node, NodeMeta, SiteConfig, TcpPingRecord } from '../types'
@@ -107,7 +107,6 @@ export function useNodes(config: SiteConfig | null) {
   const [tcpPingMap, setTcpPingMap] = useState<Map<string, TcpPingRecord[]>>(new Map())
   const [errors, setErrors] = useState<BackendError[]>([])
   const [loading, setLoading] = useState(true)
-  const [onlineViewers, setOnlineViewers] = useState<number | null>(null)
   const [visitorStats, setVisitorStats] = useState<VisitorStats | null>(null)
   const poolRef = useRef<BackendPool | null>(null)
   // 每个 entry（后端 URL）单独记录上次成功拉取的最大 timestamp，用于增量轮询游标
@@ -426,19 +425,14 @@ export function useNodes(config: SiteConfig | null) {
 
     const clockTimer = setInterval(() => setTick(t => t + 1), 5000)
 
-    subscribeViewerCount(pool.entries[0].client, count => {
-      setOnlineViewers(count)
-    })
-      .then(unsub => unsubscribeFns.push(unsub))
-      .catch(e => console.warn('[useNodes] subscribeViewerCount 失败:', e))
-
-    // 获取访客统计（一次性请求，不轮询）
+    // 访客统计：记录本次访问 + 订阅实时更新（online_viewers 包含在推送数据中）
     const firstBackendUrl = config.site_tokens[0]?.backend_url
     if (firstBackendUrl) {
-      fetchVisitorStats(firstBackendUrl)
-        .then(stats => { if (stats) setVisitorStats(stats) })
-        .catch(() => {})
+      recordVisit(firstBackendUrl)
     }
+    subscribeVisitorStats(pool.entries[0].client, stats => setVisitorStats(stats))
+      .then(unsub => unsubscribeFns.push(unsub))
+      .catch(e => console.warn('[useNodes] subscribeVisitorStats 失败:', e))
 
     return () => {
       ac.abort()
@@ -580,5 +574,5 @@ export function useNodes(config: SiteConfig | null) {
     }
   }, [])
 
-  return { nodes, errors, loading, onlineViewers, visitorStats, fetchNodeTcpHistory, fetchCardHistory, fetchUptimeHistory, fetchIncidentHistory }
+  return { nodes, errors, loading, visitorStats, fetchNodeTcpHistory, fetchCardHistory, fetchUptimeHistory, fetchIncidentHistory }
 }

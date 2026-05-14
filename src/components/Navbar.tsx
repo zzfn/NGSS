@@ -260,9 +260,6 @@ export function Navbar({
             <span style={{ opacity: 0.55 }}>今日第</span>
             <span style={{ color: 'hsl(var(--foreground))', fontWeight: 700 }}>{visitorStats.today_rank}</span>
             <span style={{ opacity: 0.55 }}>位</span>
-            <span style={{ opacity: 0.3, margin: '0 2px' }}>·</span>
-            <span style={{ opacity: 0.55 }}>累计</span>
-            <span style={{ color: 'hsl(var(--foreground))', fontWeight: 700 }}>{visitorStats.all_time_total.toLocaleString()}</span>
           </span>
         )}
         <button

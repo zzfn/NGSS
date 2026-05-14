@@ -14,6 +14,7 @@ import { AlertBanner } from './components/AlertBanner'
 import { WorldMap } from './components/WorldMap'
 import { NodeDetail } from './components/NodeDetail'
 import { NodeGrid } from './components/NodeGrid'
+import { VisitorStatsCard } from './components/VisitorStatsCard'
 import { deriveUsage } from './utils/derive'
 import { resolveCoords } from './utils/coords'
 import type { View, Node, TcpPingRecord, HistorySample } from './types'
@@ -600,7 +601,7 @@ function MiniWorldMap({
 export function App() {
   const isMobile = useIsMobile()
   const { config, error: configError } = useConfig()
-  const { nodes, errors, loading, onlineViewers, visitorStats, fetchNodeTcpHistory, fetchUptimeHistory, fetchIncidentHistory } = useNodes(config)
+  const { nodes, errors, loading, visitorStats, fetchNodeTcpHistory, fetchUptimeHistory, fetchIncidentHistory } = useNodes(config)
   const deferredNodes = useDeferredValue(nodes)
   const navigate = useNavigate()
 
@@ -732,7 +733,7 @@ export function App() {
               fetchTcpHistory={fetchNodeTcpHistory}
               fetchUptimeHistory={fetchUptimeHistory}
               fetchIncidentHistory={fetchIncidentHistory}
-              onlineViewers={onlineViewers}
+              onlineViewers={null}
             />
           }
         />
@@ -755,7 +756,7 @@ export function App() {
                 alertCount={alertCount}
                 alertOnly={alertOnly}
                 query={query}
-                onlineViewers={onlineViewers}
+                onlineViewers={visitorStats?.online_viewers ?? null}
                 visitorStats={visitorStats}
                 onRegionChange={r => setActiveRegion(r)}
                 onAlertToggle={() => setAlertOnly(v => !v)}
@@ -799,6 +800,10 @@ export function App() {
                           </div>
                           <MiniWorldMap nodes={allNodes} onViewMap={() => navigate('/map')} hidden={isMobile} />
                         </div>
+                        {/* 访问统计 */}
+                        {visitorStats != null && (
+                          <VisitorStatsCard stats={visitorStats} />
+                        )}
                         {/* 排行榜 */}
                         <TopRanking nodes={allNodes} onSelect={uuid => navigate('/node/' + uuid)} />
                       </div>

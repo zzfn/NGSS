@@ -79,22 +79,39 @@ export const querySummaryBuckets = (
   query: { uuid: string; from: number; to: number; buckets: number; fields: string[] },
 ) => c.call<SummaryBucket[]>('agent_query_dynamic_summary_buckets', { query })
 
-export interface VisitorStats {
-  today_rank: number
-  today_total: number
-  all_time_total: number
-  yesterday_total: number
+export interface VisitorDailyPoint {
+  date: string
+  pv: number
+  uv: number
 }
 
-export async function fetchVisitorStats(backendUrl: string): Promise<VisitorStats | null> {
-  try {
-    const httpUrl = backendUrl.replace(/^wss:\/\//, 'https://').replace(/^ws:\/\//, 'http://')
-    const r = await fetch(`${httpUrl}/nodeget/visitor-stats`)
-    if (!r.ok) return null
-    return r.json()
-  } catch {
-    return null
-  }
+export interface VisitorStats {
+  today_rank: number
+  today_pv: number
+  today_uv: number
+  all_time_pv: number
+  all_time_uv: number
+  yesterday_pv: number
+  yesterday_uv: number
+  online_viewers: number
+  history?: VisitorDailyPoint[]
+}
+
+/** 订阅访客统计，连接时立即推送当前数据，之后每次有新访问都会收到更新 */
+export const subscribeVisitorStats = (
+  c: RpcClient,
+  handler: (stats: VisitorStats) => void,
+): Promise<() => Promise<void>> =>
+  c.subscribe<VisitorStats>(
+    'nodeget-server_subscribe_visitor_stats',
+    'nodeget-server_unsubscribe_visitor_stats',
+    handler,
+  )
+
+/** 记录一次访问（服务端 IP 提取 + 5分钟去重），fire-and-forget */
+export function recordVisit(backendUrl: string): void {
+  const httpUrl = backendUrl.replace(/^wss:\/\//, 'https://').replace(/^ws:\/\//, 'http://')
+  fetch(`${httpUrl}/nodeget/record-visit`, { method: 'POST' }).catch(() => {})
 }
 
 export const kvGetMulti = (
@@ -110,11 +127,9 @@ export interface TcpPingRow {
   cron_source: string | null
 }
 
-// 启动快照：每个 (uuid, cron_source) 组合仅返回最新一条，用于初始化卡片状态
 export const queryTcpPingsLatest = (c: RpcClient) =>
   c.call<TcpPingRow[]>('task_query_latest_per_node', { task_type: 'tcp_ping' })
 
-// 增量轮询：查指定时间窗口内的数据（from = 上次游标 + 1，只拉新增）
 export const queryTcpPings = (c: RpcClient, from: number, to: number, limit?: number) =>
   c.call<TcpPingRow[]>('task_query', {
     task_data_query: {
@@ -126,7 +141,6 @@ export const queryTcpPings = (c: RpcClient, from: number, to: number, limit?: nu
     },
   })
 
-// 单节点历史：只查指定 uuid，limit 只作用于该节点（用于 NodeDetail 图表）
 export const queryNodeTcpPings = (c: RpcClient, uuid: string, from: number, to: number, limit?: number) =>
   c.call<TcpPingRow[]>('task_query', {
     task_data_query: {
@@ -138,4 +152,3 @@ export const queryNodeTcpPings = (c: RpcClient, uuid: string, from: number, to: 
       ],
     },
   })
-
