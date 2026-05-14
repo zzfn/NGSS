@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import type { VisitorStats } from '../api/methods'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
 
 interface Props {
   stats: VisitorStats
@@ -115,7 +117,7 @@ function StatItem({ label, uv, pv }: { label: string; uv: number; pv: number }) 
   )
 }
 
-function TrendChart({ data }: { data: VisitorStats['history'] }) {
+function TrendChart({ data, large }: { data: VisitorStats['history']; large?: boolean }) {
   if (data.length === 0) return null
 
   const formatted = data.map(d => ({
@@ -124,8 +126,8 @@ function TrendChart({ data }: { data: VisitorStats['history'] }) {
   }))
 
   return (
-    <div style={{ padding: '8px 12px 4px' }}>
-      <ResponsiveContainer width="100%" height={80}>
+    <div style={{ padding: large ? '4px 0' : '8px 12px 4px' }}>
+      <ResponsiveContainer width="100%" height={large ? 240 : 80}>
         <AreaChart data={formatted}>
           <defs>
             <linearGradient id="uvGrad" x1="0" y1="0" x2="0" y2="1">
@@ -139,17 +141,17 @@ function TrendChart({ data }: { data: VisitorStats['history'] }) {
           </defs>
           <XAxis
             dataKey="label"
-            tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))', opacity: 0.6 }}
+            tick={{ fontSize: large ? 11 : 9, fill: 'hsl(var(--muted-foreground))', opacity: 0.6 }}
             axisLine={false}
             tickLine={false}
           />
           <YAxis
-            tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))', opacity: 0.6 }}
+            tick={{ fontSize: large ? 11 : 9, fill: 'hsl(var(--muted-foreground))', opacity: 0.6 }}
             axisLine={false}
             tickLine={false}
-            width={28}
+            width={large ? 36 : 28}
             allowDecimals={false}
-            tickCount={4}
+            tickCount={large ? 5 : 4}
           />
           <Tooltip
             cursor={{ stroke: 'hsl(var(--muted-foreground))', strokeOpacity: 0.2 }}
@@ -193,60 +195,93 @@ function TrendChart({ data }: { data: VisitorStats['history'] }) {
 }
 
 export function VisitorStatsCard({ stats }: Props) {
+  const [open, setOpen] = useState(false)
   const dividerColor = 'hsl(var(--border) / 0.35)'
+  const hasHistory = (stats.history?.length ?? 0) > 1
 
   return (
-    <div
-      style={{
-        borderTop: `1px solid ${dividerColor}`,
-        borderBottom: `1px solid ${dividerColor}`,
-      }}
-    >
-      {/* 标题栏 */}
+    <>
       <div
         style={{
-          padding: '6px 14px',
+          borderTop: `1px solid ${dividerColor}`,
           borderBottom: `1px solid ${dividerColor}`,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
         }}
       >
-        <span
+        {/* 标题栏 */}
+        <div
           style={{
-            fontSize: 10,
-            fontFamily: 'ui-monospace, monospace',
-            letterSpacing: '0.12em',
-            textTransform: 'uppercase',
-            color: 'hsl(var(--foreground))',
+            padding: '6px 14px',
+            borderBottom: `1px solid ${dividerColor}`,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
           }}
         >
-          访问统计
-        </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10 }}>
-          <span style={{ color: UV_COLOR }}>人</span>
-          <span style={{ color: 'hsl(var(--muted-foreground))' }}>独立访客</span>
-          <span style={{ color: 'hsl(var(--muted-foreground))', opacity: 0.4 }}>·</span>
-          <span style={{ color: PV_COLOR }}>次</span>
-          <span style={{ color: 'hsl(var(--muted-foreground))' }}>浏览次数（同IP 5分钟内不重复计）</span>
-        </span>
+          <span
+            style={{
+              fontSize: 10,
+              fontFamily: 'ui-monospace, monospace',
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              color: 'hsl(var(--foreground))',
+            }}
+          >
+            访问统计
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10 }}>
+            <span style={{ color: UV_COLOR }}>人</span>
+            <span style={{ color: 'hsl(var(--muted-foreground))' }}>独立访客</span>
+            <span style={{ color: 'hsl(var(--muted-foreground))', opacity: 0.4 }}>·</span>
+            <span style={{ color: PV_COLOR }}>次</span>
+            <span style={{ color: 'hsl(var(--muted-foreground))' }}>浏览次数（同IP 5分钟内不重复计）</span>
+          </span>
+          {hasHistory && (
+            <button
+              onClick={() => setOpen(true)}
+              style={{
+                marginLeft: 'auto',
+                fontSize: 10,
+                color: 'hsl(var(--muted-foreground))',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '2px 6px',
+                borderRadius: 4,
+                opacity: 0.7,
+              }}
+              onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+              onMouseLeave={e => (e.currentTarget.style.opacity = '0.7')}
+            >
+              查看趋势 →
+            </button>
+          )}
+        </div>
+
+        {/* 今日 / 昨日 / 累计 */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)' }}>
+          <TodayStatItem rank={stats.today_rank} uv={stats.today_uv} pv={stats.today_pv} />
+          <div style={{ borderLeft: `1px solid ${dividerColor}`, borderRight: `1px solid ${dividerColor}` }}>
+            <StatItem label="昨日" uv={stats.yesterday_uv} pv={stats.yesterday_pv} />
+          </div>
+          <StatItem label="累计" uv={stats.all_time_uv} pv={stats.all_time_pv} />
+        </div>
       </div>
 
-      {/* 今日 / 昨日 / 累计 */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)' }}>
-        <TodayStatItem rank={stats.today_rank} uv={stats.today_uv} pv={stats.today_pv} />
-        <div style={{ borderLeft: `1px solid ${dividerColor}`, borderRight: `1px solid ${dividerColor}` }}>
-          <StatItem label="昨日" uv={stats.yesterday_uv} pv={stats.yesterday_pv} />
-        </div>
-        <StatItem label="累计" uv={stats.all_time_uv} pv={stats.all_time_pv} />
-      </div>
-
-      {/* 趋势图 */}
-      {(stats.history?.length ?? 0) > 1 && (
-        <div style={{ borderTop: `1px solid ${dividerColor}` }}>
-          <TrendChart data={stats.history} />
-        </div>
+      {/* 趋势弹窗 */}
+      {hasHistory && (
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle style={{ fontSize: 14, fontWeight: 600 }}>访问趋势</DialogTitle>
+            </DialogHeader>
+            <div style={{ display: 'flex', gap: 16, marginBottom: 8, fontSize: 11, color: 'hsl(var(--muted-foreground))' }}>
+              <span><span style={{ color: UV_COLOR }}>■</span> 独立访客（人）</span>
+              <span><span style={{ color: PV_COLOR }}>■</span> 浏览次数（次）</span>
+            </div>
+            <TrendChart data={stats.history} large />
+          </DialogContent>
+        </Dialog>
       )}
-    </div>
+    </>
   )
 }
