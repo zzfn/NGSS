@@ -453,11 +453,11 @@ export function useNodes(config: SiteConfig | null) {
     }
   }, [config])
 
-  const fetchNodeTcpHistory = useCallback(async (uuid: string): Promise<TcpPingRecord[]> => {
+  const fetchNodeTcpHistory = useCallback(async (uuid: string, fromMs: number): Promise<TcpPingRecord[]> => {
     const pool = poolRef.current
     if (!pool) return []
     const now = Date.now()
-    const from = now - 6 * 3600_000
+    const from = fromMs
     const results: TcpPingRecord[] = []
     await Promise.allSettled(
       pool.entries.map(async entry => {

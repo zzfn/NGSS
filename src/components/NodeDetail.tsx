@@ -53,7 +53,7 @@ interface Props {
   node: Node | null
   onClose: () => void
   showSource?: boolean
-  fetchTcpHistory?: (uuid: string) => Promise<TcpPingRecord[]>
+  fetchTcpHistory?: (uuid: string, fromMs: number) => Promise<TcpPingRecord[]>
   fetchIncidentHistory?: (uuid: string, days: number) => Promise<HistorySample[]>
   fetchNetworkBuckets?: (uuid: string, from: number, to: number, buckets: number) => Promise<SummaryBucket[]>
   inline?: boolean
@@ -270,15 +270,15 @@ export function NodeDetail({
   const [range, setRange] = useState<Range>('6h')
   const [smooth, setSmooth] = useState(true)
 
-  // 加载详细 TCP ping 历史
+  // 加载详细 TCP ping 历史（随时间范围切换重新拉取）
   useEffect(() => {
     if (!node || !fetchTcpHistory) { setDetailPings(null); setLoadingPings(false); return }
     setDetailPings(null)
     setLoadingPings(true)
-    fetchTcpHistory(node.uuid)
+    fetchTcpHistory(node.uuid, Date.now() - RANGE_MS[range])
       .then(r => { setDetailPings(r); setLoadingPings(false) })
       .catch(() => setLoadingPings(false))
-  }, [node?.uuid, fetchTcpHistory])
+  }, [node?.uuid, range, fetchTcpHistory])
 
   // 加载宕机历史（随时间范围切换重新拉取，结果同时用于在线率和事件时间线）
   useEffect(() => {

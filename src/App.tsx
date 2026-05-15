@@ -924,7 +924,7 @@ function MapRoute({ nodes, onSelect, onClose }: {
 function NodeDetailRoute({ nodes, showSource, fetchTcpHistory, fetchIncidentHistory, fetchNetworkBuckets, onlineViewers }: {
   nodes: Map<string, Node>
   showSource: boolean
-  fetchTcpHistory: (uuid: string) => Promise<TcpPingRecord[]>
+  fetchTcpHistory: (uuid: string, fromMs: number) => Promise<TcpPingRecord[]>
   fetchIncidentHistory: (uuid: string, days: number) => Promise<HistorySample[]>
   fetchNetworkBuckets: (uuid: string, from: number, to: number, buckets: number) => Promise<import('./api/methods').SummaryBucket[]>
   onlineViewers: number | null
