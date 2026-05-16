@@ -432,7 +432,7 @@ export function useNodes(config: SiteConfig | null) {
       recordVisit(firstBackendUrl)
     }
     subscribeVisitorStats(pool.entries[0].client, stats => {
-      if (myRankRef.current == null) myRankRef.current = stats.today_rank
+      if (myRankRef.current == null) myRankRef.current = stats.today_uv
       setVisitorStats({ ...stats, today_rank: myRankRef.current })
     })
       .then(unsub => unsubscribeFns.push(unsub))
