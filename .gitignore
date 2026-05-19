@@ -145,5 +145,7 @@ vite.config.ts.timestamp-*
 # Vite local-only overrides (config.local.json, etc.)
 *.local
 
-# macOS
-.DS_Store
+public/config.json
+.idea
+nodeget-theme.dev.json
+nodeget-theme.dev.jsonc

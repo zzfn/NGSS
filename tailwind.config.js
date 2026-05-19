@@ -59,10 +59,9 @@ export default {
           'sans-serif',
         ],
         mono: [
-          'JetBrains Mono',
-          'IBM Plex Mono',
           'ui-monospace',
           'SFMono-Regular',
+          'JetBrains Mono',
           'Menlo',
           'Consolas',
           'monospace',
